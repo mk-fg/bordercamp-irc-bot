@@ -1,0 +1,66 @@
+### Default (baseline) configuration parameters.
+### DO NOT ever change this config, use -c commandline option instead!
+
+relays:
+
+  _default: # used as a base for all other sections here
+    enabled: true
+    channel: bordercamp # alias from core.channels
+    # debug: # auto-filled from global "debug" section, if not specified
+
+  logtail:
+
+
+core:
+
+  connection:
+    host: localhost
+    port: 6667
+
+    nick: orc
+    password:
+
+    reconnect: # see twisted.internet.protocol.ReconnectingClientFactory
+      maxDelay: 30
+      initialDelay: 1
+      factor: 2
+      jitter: 0.2
+      # maxRetries:
+
+    heartbeat: 60 # pings to hostname
+
+  channels:
+    bordercamp:
+      name: '#bordercamp'
+
+
+debug: # values here can be overidden by special CLI flags
+  dry_run: false
+
+logging: # see http://docs.python.org/library/logging.config.html
+  # "custom" level means WARNING or DEBUG, depending on CLI options
+  warnings: true # capture python warnings
+  tracebacks: true # much easier to debug with these, but noisy and multiline
+  version: 1
+  formatters:
+    basic:
+      format: '%(asctime)s :: %(levelname)s :: %(name)s: %(message)s'
+      datefmt: '%Y-%m-%d %H:%M:%S'
+  handlers:
+    console:
+      class: logging.StreamHandler
+      stream: ext://sys.stdout
+      formatter: basic
+      level: custom
+    # file:
+    #   class: logging.handlers.WatchedFileHandler
+    #   filename: /var/log/harvestd.log
+    #   formatter: basic
+    #   encoding: utf-8
+    #   level: DEBUG
+  # loggers:
+  #   graphite_metrics.collectors.irq:
+  #     level: ERROR
+  root:
+    handlers: [console]
+    level: custom
