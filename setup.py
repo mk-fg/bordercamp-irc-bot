@@ -42,7 +42,7 @@ setup(
 		'Topic :: System :: Networking :: Monitoring',
 		'Topic :: System :: Systems Administration' ],
 
-	install_requires = ['Twisted-Core', 'Twisted-Words', 'PyYAML', 'setuptools'],
+	install_requires = ['Twisted', 'PyYAML', 'setuptools'],
 
 	packages = find_packages(),
 	include_package_data = True,

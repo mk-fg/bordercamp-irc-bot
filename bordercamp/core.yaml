@@ -43,9 +43,8 @@ debug: # values here can be overidden by special CLI flags
   dry_run: false
 
 logging: # see http://docs.python.org/library/logging.config.html
-  # "custom" level means WARNING or DEBUG, depending on CLI options
+  # "custom" level means WARNING/DEBUG/NOISE, depending on CLI options
   warnings: true # capture python warnings
-  tracebacks: true # much easier to debug with these, but noisy and multiline
   version: 1
   formatters:
     basic:

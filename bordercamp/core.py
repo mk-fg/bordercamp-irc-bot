@@ -74,6 +74,14 @@ def main():
 	parser = argparse.ArgumentParser(
 		description='Start the IRC helper bot.')
 
+	parser.add_argument('-e', '--relay-enable',
+		action='append', metavar='relay', default=list(),
+		help='Enable only the specified relays, can be specified multiple times.')
+	parser.add_argument('-d', '--relay-disable',
+		action='append', metavar='relay', default=list(),
+		help='Explicitly disable specified relays,'
+			' can be specified multiple times. Overrides --collector-enable.')
+
 	parser.add_argument('-c', '--config',
 		action='append', metavar='path', default=list(),
 		help='Configuration files to process.'
@@ -85,6 +93,8 @@ def main():
 		action='store_true', help='Do not connect to IRC, just init all the plugins and exit.')
 	parser.add_argument('--debug',
 		action='store_true', help='Verbose operation mode.')
+	parser.add_argument('--noise',
+		action='store_true', help='Even more verbose mode than --debug.')
 	optz = parser.parse_args()
 
 	# Read configuration files
@@ -94,8 +104,12 @@ def main():
 
 	# Logging
 	import logging
-	config.configure_logging( cfg.logging,
-		logging.DEBUG if optz.debug else logging.WARNING )
+	logging.NOISE = logging.DEBUG - 1
+	logging.addLevelName(logging.NOISE, 'NOISE')
+	if optz.noise: lvl = logging.NOISE
+	elif optz.debug: lvl = logging.DEBUG
+	else: lvl = logging.WARNING
+	config.configure_logging(cfg.logging, lvl)
 	log.PythonLoggingObserver().start()
 
 	for lvl in 'noise', 'debug', 'info', ('warning', 'warn'), 'error':
@@ -104,11 +118,14 @@ def main():
 		setattr(log, func, ft.partial( log.msg,
 			logLevel=logging.getLevelName(lvl.upper()) ))
 
-	# Init pluggable components
-	# import pkg_resources
-	# relays = dict( (ep.name, ep.load()) for ep in
-	# 	pkg_resources.iter_entry_points('bordercamp.relays') )
-	# raise NotImplementedError(repr(relays))
+	# Pluggable components
+	relays = config.ep_load(
+		'bordercamp', lambda ep_type: ep_type.rstrip('s'),
+		config.ep_config( cfg,
+			[dict( ep='relays',
+				enabled=optz.relay_enable, disabled=optz.relay_disable )] ),
+		log=log )
+	raise NotImplementedError(relays)
 
 	endpoints\
 		.clientFromString(reactor, cfg.core.connection.endpoint)\
