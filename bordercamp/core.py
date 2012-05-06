@@ -3,9 +3,10 @@
 from __future__ import print_function
 
 import itertools as it, operator as op, functools as ft
+from datetime import datetime
 import os, sys
 
-from twisted.internet import reactor, protocol, error, task, defer
+from twisted.internet import reactor, endpoints, protocol, error, task, defer
 from twisted.words.protocols import irc
 from twisted.python import log
 
@@ -14,12 +15,17 @@ from bordercamp import config
 
 class BCBot(irc.IRCClient):
 
-	nickname = property(lambda s: s.factory.conf.connection.nick) # used by twisted
-	realname = 'bordercamp bot'
-	heartbeatInterval = property(lambda s: s.factory.conf.connection.heartbeat)
+	versionName, versionEnv = 'bordercamp', '{1} ({0})'.format(*os.uname()[:2])
+	versionNum = '.'.join( bytes(int(num)) for num in
+		datetime.fromtimestamp(os.stat(__file__).st_mtime).strftime('%y %m %d').split() )
+	sourceURL = 'http://github.com/mk-fg/bordercamp-irc-bot'
 
 	def __init__(self, conf):
 		self.conf = conf
+		self.heartbeatInterval = self.conf.connection.heartbeat
+		for k in 'realname', 'username', 'password', 'userinfo':
+			v = self.conf.connection.get(k)
+			if v: setattr(self, k, v)
 
 	def connectionMade(self):
 		irc.IRCClient.connectionMade(self)
@@ -31,33 +37,25 @@ class BCBot(irc.IRCClient):
 
 
 	def signedOn(self):
+		log.debug('Signed on')
 		for alias, channel in self.conf.channels.viewitems():
+			log.debug('Joining channel: {}'.format(channel.name))
 			self.join(channel.name)
 
-	def joined(self, channel):
+	def joined(self, channel): # znc somehow omits these, it seems
 		log.debug('Joined channel: {}'.format(channel))
 
 
-	# def privmsg(self, user, channel, message, sys=False):
-	# 	nick = user.split('!', 1)[0]
-	# 	if not sys:
-	# 		try:
-	# 			self.loggers[channel].send('{0} ({1}) {2}'.format(nick, user, message))
-	# 			self.factory.activity_callback() # indication that it's Still Alive
-	# 		except KeyError: sys = True
-	# 	if sys: # can be used as a fallback
-	# 		self.logger_sys.send( 'Off-the-record'
-	# 			' (channel: {0}, user: {1}): {2}'.format(channel, user, message) )
+	def privmsg(self, user, channel, message):
+		nick = user.split('!', 1)[0]
+		if self.conf.nickname_lstrip: nick = nick.lstrip(self.conf.nickname_lstrip)
+		log.debug('Got msg: {}'.format([user, nick, channel, message]))
 
 	def action(self, user, channel, message):
 		self.privmsg(user, channel, '/me {}'.format(message))
 
 	def noticed(self, user, channel, message):
 		self.privmsg(user, channel, '/notice {}'.format(message))
-
-	# def kickedFrom(self, channel, user, message):
-	# 	self.privmsg( user, channel,
-	# 		'KICKED - {0!r}'.format(smart_unicode(message)), sys=True )
 
 
 
@@ -112,8 +110,9 @@ def main():
 	# 	pkg_resources.iter_entry_points('bordercamp.relays') )
 	# raise NotImplementedError(repr(relays))
 
-	reactor.connectTCP( cfg.core.connection.host,
-		cfg.core.connection.port, BCFactory(cfg.core) )
+	endpoints\
+		.clientFromString(reactor, cfg.core.connection.endpoint)\
+		.connect(BCFactory(cfg.core))
 
 	log.debug('Starting event loop')
 	reactor.run()

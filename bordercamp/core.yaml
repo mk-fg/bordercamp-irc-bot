@@ -14,11 +14,14 @@ relays:
 core:
 
   connection:
-    host: localhost
-    port: 6667
+    # twisted endpoint syntax, see twisted.internet.endpoints.html#clientFromString
+    endpoint: tcp:host=localhost:port=6667
 
-    nick: orc
-    password:
+    nickname: orc
+    realname: bordercamp bot
+    # username:
+    # password:
+    # userinfo:
 
     reconnect: # see twisted.internet.protocol.ReconnectingClientFactory
       maxDelay: 30
@@ -28,6 +31,8 @@ core:
       # maxRetries:
 
     heartbeat: 60 # pings to hostname
+
+  nickname_lstrip: '*?@~&%+' # various owner/mode prefixes
 
   channels:
     bordercamp:
