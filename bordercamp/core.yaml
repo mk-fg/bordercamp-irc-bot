@@ -9,6 +9,7 @@ relays:
     # debug: # auto-filled from global "debug" section, if not specified
 
   logtail:
+    monitor: '/var/log/syslog/{test,stripped}.log' # glob pattern or a list of them
 
 
 core:
