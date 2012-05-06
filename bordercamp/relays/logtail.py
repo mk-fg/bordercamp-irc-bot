@@ -6,7 +6,9 @@ from glob import glob
 from fnmatch import fnmatch
 from hashlib import sha1
 from io import open
-import os, sys, re
+import os, sys, re, pickle
+
+from xattr import xattr
 
 from twisted.python.filepath import FilePath
 from twisted.internet import inotify, reactor, defer
@@ -16,45 +18,6 @@ from . import BCRelay
 
 
 class Logtail(BCRelay):
-
-	@staticmethod
-	def file_end_mark(path, size=200, pos=None, data=None):
-		if not pos:
-			with path.open() as src:
-				if not data:
-					pos = None
-					while pos != src.tell(): # to ensure that file didn't grow in-between
-						pos = os.fstat(src.fileno()).st_size
-						src.seek(-min(pos, size), os.SEEK_END)
-						data = src.read()
-				else:
-					pos = os.fstat(src).st_size
-		size, data = len(data), sha1(data).hexdigest()
-		return pos, size, data
-
-	@staticmethod
-	def file_end_check(path, pos, size=None, data=None):
-		if pos != path.getsize(): return False
-		elif size and data:
-			with path.open() as src:
-				src.seek(-size, os.SEEK_END)
-				if sha1(src.read()).hexdigest() != data: return False
-		return True
-
-	@staticmethod
-	def glob(pattern, _glob_cbex = re.compile(r'\{[^}]+\}')):
-		'''Shell-like glob with support for curly braces.
-			Usage of these braces in the actual name isn't supported.'''
-		subs = list()
-		while True:
-			ex = _glob_cbex.search(pattern)
-			if not ex: break
-			subs.append(ex.group(0)[1:-1].split(','))
-			pattern = pattern[:ex.span()[0]] + '{}' + pattern[ex.span()[1]:]
-		return it.chain.from_iterable(
-				glob(pattern.format(*combo))
-				for combo in product(*subs) )\
-			if subs else glob(pattern)
 
 
 	def __init__(self, *argz, **kwz):
@@ -72,18 +35,58 @@ class Logtail(BCRelay):
 		for mask in masks: self.monitor(mask)
 
 
+	@staticmethod
+	def file_end_mark(path, size=200, pos=None, data=None):
+		if not pos:
+			with path.open() as src:
+				if not data:
+					pos = None
+					while pos != src.tell(): # to ensure that file didn't grow in-between
+						pos = os.fstat(src.fileno()).st_size
+						src.seek(-min(pos, size), os.SEEK_END)
+						data = src.read()
+				else:
+					pos = os.fstat(src).st_size
+		size, data = len(data), sha1(data).hexdigest()
+		return pos, size, data
+
+	@staticmethod
+	def file_end_check(path, pos, size=None, data_hash=None):
+		if pos != path.getsize(): return False
+		elif size and data_hash:
+			with path.open() as src: # lots of races ahead, but whatever
+				src.seek(-size, os.SEEK_END)
+				data = src.read(size)
+				if len(data) != size: return False # not the end
+				if sha1(data).hexdigest() != data_hash: return False # not the *same* end
+		return True
+
+	@staticmethod
+	def glob(pattern, _glob_cbex = re.compile(r'\{[^}]+\}')):
+		'''Shell-like glob with support for curly braces.
+			Usage of these braces in the actual name isn't supported.'''
+		subs = list()
+		while True:
+			ex = _glob_cbex.search(pattern)
+			if not ex: break
+			subs.append(ex.group(0)[1:-1].split(','))
+			pattern = pattern[:ex.span()[0]] + '{}' + pattern[ex.span()[1]:]
+		return list(it.chain.from_iterable(
+				glob(pattern.format(*combo))
+				for combo in it.product(*subs) ))\
+			if subs else glob(pattern)
+
+
 	def monitor(self, path_mask):
-		paths_pos = self.paths_pos
-		paths_watch = self.paths_watch
-		paths = glob(path_mask)
+		paths_watch, paths = self.paths_watch, self.glob(path_mask)
 		for path in it.imap(FilePath, paths):
 			path_real = path.realpath()
 			# Matched regular files are watched as a basename pattern in the dir
 			if path_real.isfile():
 				path_dir = path.parent().realpath()
 				if path_dir not in paths_watch:
-					paths_watch[path_dir] = {os.path.basename(optz.path_mask)}
-				else: paths_watch[path_dir].add(os.path.basename(optz.path_mask))
+					paths_watch[path_dir] = {path.basename()}
+				else: paths_watch[path_dir].add(path.basename())
 			# All files in the matched dirs are watched, non-recursively
 			elif path_real.isdir():
 				if path_real not in paths_watch: paths_watch[path_real] = {'*'}
@@ -122,9 +125,18 @@ class Logtail(BCRelay):
 			return
 
 		## Get last position
-		if self.paths_pos.get(path_real) is not None:
-			pos, size, data = self.paths_pos[path_real]
-			if self.file_end_check(path_real, pos, size=size, data=data):
+		pos = self.paths_pos.get(path_real)
+		if not pos: # try restoring it from xattr
+			try: pos = pickle.loads(xattr(path_real.path)[self.conf.xattr_name])
+			except KeyError:
+				log.debug('Failed to restore last log position from xattr for path: {}'.format(path))
+			else:
+				log.noise(
+					'Restored pos from xattr ({}) for path {}: {!r}'\
+					.format(self.conf.xattr_name, path_real, pos) )
+		if pos:
+			pos, size, data_hash = pos
+			if self.file_end_check(path_real, pos, size=size, data_hash=data_hash):
 				log.debug(( 'Event (mask: {}) for unchanged'
 					' path, ignoring: {}' ).format(mask_str, path))
 				return
@@ -132,7 +144,6 @@ class Logtail(BCRelay):
 				log.debug( 'Detected truncation'
 					' of a path, rewinding: {}'.format(path) )
 				pos = None
-		else: pos = None
 
 		## Actual processing
 		line = self.paths_buff.setdefault(path_real, '')
@@ -141,9 +152,15 @@ class Logtail(BCRelay):
 				src.seek(pos)
 				pos = None
 			while True:
-				buff = src.readline()
-				if not buff: # eof
-					self.paths_pos[path_real] = self.file_end_mark(path_real, data=line)
+				buff, pos = src.readline(), src.tell()
+				if not buff: # eof, try to mark the position
+					if not line: # clean eof at the end of the line - mark it
+						pos = self.file_end_mark(path_real, pos=pos, data=line)
+						self.paths_pos[path_real] = pos
+						xattr(path_real.path)[self.conf.xattr_name] = pickle.dumps(pos)
+						log.noise( 'Updated xattr ({}) for path {} to: {!r}'\
+							.format(self.conf.xattr_name, path_real, pos) )
+					break
 				line += buff
 				if line.endswith('\n'):
 					log.noise('New line (source: {}): {!r}'.format(path, line))
@@ -154,9 +171,8 @@ class Logtail(BCRelay):
 					break
 
 
-	# @defer.inlineCallbacks
 	def handle_line(self, line):
-		log.debug('Yay for line: {}'.format(line))
+		self.interface.relay_msg(self, self.conf.channel, line)
 
 
 relay = Logtail

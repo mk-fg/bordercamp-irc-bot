@@ -20,8 +20,8 @@ class BCBot(irc.IRCClient):
 		datetime.fromtimestamp(os.stat(__file__).st_mtime).strftime('%y %m %d').split() )
 	sourceURL = 'http://github.com/mk-fg/bordercamp-irc-bot'
 
-	def __init__(self, conf):
-		self.conf = conf
+	def __init__(self, conf, interface):
+		self.conf, self.interface = conf, interface
 		self.heartbeatInterval = self.conf.connection.heartbeat
 		for k in 'realname', 'username', 'password', 'userinfo':
 			v = self.conf.connection.get(k)
@@ -34,6 +34,7 @@ class BCBot(irc.IRCClient):
 	def connectionLost(self, reason):
 		log.debug('Lost connection to the IRC server: {}'.format(reason))
 		irc.IRCClient.connectionLost(self, reason)
+		self.interface.proto_off(self)
 
 
 	def signedOn(self):
@@ -41,6 +42,7 @@ class BCBot(irc.IRCClient):
 		for alias, channel in self.conf.channels.viewitems():
 			log.debug('Joining channel: {}'.format(channel.name))
 			self.join(channel.name)
+		self.interface.proto_on(self)
 
 	def joined(self, channel): # znc somehow omits these, it seems
 		log.debug('Joined channel: {}'.format(channel))
@@ -50,6 +52,7 @@ class BCBot(irc.IRCClient):
 		nick = user.split('!', 1)[0]
 		if self.conf.nickname_lstrip: nick = nick.lstrip(self.conf.nickname_lstrip)
 		log.debug('Got msg: {}'.format([user, nick, channel, message]))
+		self.interface.proto_msg(self, user, nick, channel, message)
 
 	def action(self, user, channel, message):
 		self.privmsg(user, channel, '/me {}'.format(message))
@@ -61,12 +64,43 @@ class BCBot(irc.IRCClient):
 
 class BCFactory(protocol.ReconnectingClientFactory):
 
-	protocol = property(lambda s: ft.partial(BCBot, s.conf))
+	protocol = property(lambda s: ft.partial(BCBot, s.conf, s.interface))
+
+	def __init__(self, conf, interface):
+		self.conf, self.interface = conf, interface
+		for k,v in self.conf.connection.reconnect.viewitems(): setattr(self, k, v)
+
+
+
+class BCInterface(object):
+	'''Persistent "interface" object sitting in-between persistent relay objects
+		and transient protocol objects, queueing/multiplexing messages from
+		relays to the protocols and messages/events from protocols to relays.'''
+	# TODO: rate control, UDP interface
+
+	irc_enc = 'utf-8'
+	proto = None
 
 	def __init__(self, conf):
 		self.conf = conf
-		for k,v in self.conf.connection.reconnect.viewitems(): setattr(self, k, v)
 
+	def proto_on(self, irc): self.proto = irc
+	def proto_off(self, irc): self.proto = None
+	def proto_msg(self, irc, user, nick, channel, message): pass
+
+	def relay_msg(self, relay, channel, msg):
+		if not self.proto: return # TODO: qxueue
+		if isinstance(msg, unicode):
+			try: msg = msg.encode(irc_enc)
+			except UnicodeEncodeError as err:
+				log.warn('Failed to encode ({}) unicode msg ({!r}): {}'.format(irc_enc, msg, err))
+				msg = msg.encode(irc_enc, 'replace')
+		max_len = self.proto._safeMaximumLineLength('PRIVMSG {} :'.format(channel)) - 2
+		first_line, channel = True, self.conf[channel]
+		for line in irc.split(msg, length=max_len):
+			if not first_line: line = '  {}'.format(line)
+			self.proto.msg(channel.name, line)
+			first_line = False
 
 
 def main():
@@ -80,7 +114,7 @@ def main():
 	parser.add_argument('-d', '--relay-disable',
 		action='append', metavar='relay', default=list(),
 		help='Explicitly disable specified relays,'
-			' can be specified multiple times. Overrides --collector-enable.')
+			' can be specified multiple times. Overrides --relay-enable.')
 
 	parser.add_argument('-c', '--config',
 		action='append', metavar='path', default=list(),
@@ -112,24 +146,36 @@ def main():
 	config.configure_logging(cfg.logging, lvl)
 	log.PythonLoggingObserver().start()
 
-	for lvl in 'noise', 'debug', 'info', ('warning', 'warn'), 'error':
+	for lvl in 'noise', 'debug', 'info', ('warning', 'warn'), 'error', ('critical', 'fatal'):
 		lvl, func = lvl if isinstance(lvl, tuple) else (lvl, lvl)
 		assert not getattr(log, lvl, False)
 		setattr(log, func, ft.partial( log.msg,
 			logLevel=logging.getLevelName(lvl.upper()) ))
 
-	# Pluggable components
+	if cfg.core.xattr_emulation:
+		import shelve
+		xattr_db = shelve.open(cfg.core.xattr_emulation, 'c')
+		class xattr_path(object):
+			def __init__(self, base):
+				assert isinstance(base, bytes)
+				self.base = base
+			def key(self, k): return '{}\0{}'.format(self.base, k)
+			def __setitem__(self, k, v): xattr_db[self.key(k)] = v
+			def __getitem__(self, k): return xattr_db[self.key(k)]
+			def __del__(self): xattr_db.sync()
+		class xattr_module(object): xattr = xattr_path
+		sys.modules['xattr'] = xattr_module
+
+	interface = BCInterface(cfg.core.channels)
 	relays = config.ep_load(
 		'bordercamp', lambda ep_type: ep_type.rstrip('s'),
 		config.ep_config( cfg,
-			[dict( ep='relays',
+			[dict( ep='relays', init_kwz=dict(interface=interface),
 				enabled=optz.relay_enable, disabled=optz.relay_disable )] ),
 		log=log )
-	raise NotImplementedError(relays)
-
 	endpoints\
 		.clientFromString(reactor, cfg.core.connection.endpoint)\
-		.connect(BCFactory(cfg.core))
+		.connect(BCFactory(cfg.core, interface))
 
 	log.debug('Starting event loop')
 	reactor.run()

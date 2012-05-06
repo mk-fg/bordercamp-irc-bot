@@ -10,6 +10,8 @@ relays:
 
   logtail:
     monitor: '/var/log/syslog/{test,stripped}.log' # glob pattern or a list of them
+    xattr_name: user.bordercamp.logtail.pos # used to mark "last position" in logs b/w restarts
+
 
 
 core:
@@ -38,6 +40,11 @@ core:
   channels:
     bordercamp:
       name: '#bordercamp'
+
+  # Emulate xattr module interface with simple k-v db for modules that use it
+  # Can be useful if xattr manipulation is limited by permissions (e.g. read-only) or fs capabilities
+  # Should be either empty/None/False or a path to shelve db (example - "xattr_emulation: /tmp/xattr.db")
+  xattr_emulation: false
 
 
 debug: # values here can be overidden by special CLI flags

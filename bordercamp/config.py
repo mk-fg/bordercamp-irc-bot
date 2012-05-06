@@ -134,7 +134,7 @@ def ep_config(cfg, ep_specs):
 			if name not in conf: conf[name] = dict()
 			conf[name]['enabled'] = False
 		if 'debug' not in conf_base: conf_base['debug'] = cfg.debug
-		ep_conf[ep] = conf_base, conf
+		ep_conf[ep] = conf_base, conf, spec.get('init_kwz', dict())
 	return ep_conf
 
 
@@ -154,7 +154,7 @@ def ep_load(ep_ns, ep_class, ep_conf, log=None, require_enabled=True):
 		import logging
 		log = logging.getLogger('ep_load')
 	objects = dict()
-	for ep_type, (conf_base, conf) in ep_conf.viewitems():
+	for ep_type, (conf_base, conf, kwz) in ep_conf.viewitems():
 		# Load all entry_points modules for type and re-order them according to configuration
 		ep_dict = dict( (ep.name, ep.load()) for ep in
 			pkg_resources.iter_entry_points('{}.{}'.format(ep_ns, ep_type)) )
@@ -172,9 +172,11 @@ def ep_load(ep_ns, ep_class, ep_conf, log=None, require_enabled=True):
 			subconf.rebase(conf_base)
 			if subconf.get('enabled', True):
 				log.debug('Loading {} (type: {}): {}'.format(ep_attr, ep_type, ep_name))
-				try: obj = getattr(ep_module, ep_attr)(subconf)
+				try: obj = getattr(ep_module, ep_attr)(subconf, **kwz)
 				except Exception as err:
-					log.exception('Failed to load/init collector ({}): {}'.format(ep_name, err))
+					log.error(
+						'Failed to load/init ep (type: {}, name: {}): {}'\
+						.format(ep_type, ep_name, err) )
 					obj, subconf.enabled = None, False
 				if subconf.get('enabled', True): objects[ep_type][ep_name] = obj
 				else:
