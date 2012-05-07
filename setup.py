@@ -43,6 +43,7 @@ setup(
 		'Topic :: System :: Systems Administration' ],
 
 	install_requires = ['Twisted', 'PyYAML', 'setuptools'],
+	extras_require = {'xattr': ['xattr']},
 
 	packages = find_packages(),
 	include_package_data = True,
