@@ -3,7 +3,7 @@ from __future__ import print_function
 
 import itertools as it, operator as op, functools as ft
 from collections import Mapping, OrderedDict
-import os, sys
+import os, sys, pkg_resources
 import yaml, yaml.constructor
 
 
@@ -149,7 +149,6 @@ def ep_load(ep_ns, ep_class, ep_conf, log=None, require_enabled=True):
 		log: logger object (logging.Logger or any compatible).
 		require_enabled: require at least one ep of each
 			"type" (see ep_ns) to be enabled/loaded/instantiated (bool).'''
-	import pkg_resources
 	if log is None:
 		import logging
 		log = logging.getLogger('ep_load')

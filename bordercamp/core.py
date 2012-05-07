@@ -81,15 +81,15 @@ class BCInterface(object):
 	irc_enc = 'utf-8'
 	proto = None
 
-	def __init__(self, conf):
-		self.conf = conf
+	def __init__(self, conf, dry_run=False):
+		self.conf, self.dry_run = conf, dry_run
 
 	def proto_on(self, irc): self.proto = irc
 	def proto_off(self, irc): self.proto = None
 	def proto_msg(self, irc, user, nick, channel, message): pass
 
 	def relay_msg(self, relay, channel, msg):
-		if not self.proto: return # TODO: qxueue
+		if not self.proto: return # TODO: queue
 		if isinstance(msg, unicode):
 			try: msg = msg.encode(irc_enc)
 			except UnicodeEncodeError as err:
@@ -99,7 +99,8 @@ class BCInterface(object):
 		first_line, channel = True, self.conf[channel]
 		for line in irc.split(msg, length=max_len):
 			if not first_line: line = '  {}'.format(line)
-			self.proto.msg(channel.name, line)
+			if not self.dry_run: self.proto.msg(channel.name, line)
+			else: log.info('IRC line (channel: {}): {}'.format(channel.name, line))
 			first_line = False
 
 
@@ -123,8 +124,9 @@ def main():
 			' Values from the latter ones override values in the former.'
 			' Available CLI options override the values in any config.')
 
-	parser.add_argument('-n', '--dry-run',
-		action='store_true', help='Do not connect to IRC, just init all the plugins and exit.')
+	parser.add_argument('-n', '--dry-run', action='store_true',
+		help='Connect to IRC, but do not communicate there,'
+			' dumping lines-to-be-sent to the log instead.')
 	parser.add_argument('--debug',
 		action='store_true', help='Verbose operation mode.')
 	parser.add_argument('--noise',
@@ -135,6 +137,9 @@ def main():
 	cfg = config.AttrDict.from_yaml('{}.yaml'.format(
 		os.path.splitext(os.path.realpath(__file__))[0] ))
 	for k in optz.config: cfg.update_yaml(k)
+
+	# CLI overrides
+	if optz.dry_run: cfg.debug.dry_run = optz.dry_run
 
 	# Logging
 	import logging
@@ -152,6 +157,7 @@ def main():
 		setattr(log, func, ft.partial( log.msg,
 			logLevel=logging.getLevelName(lvl.upper()) ))
 
+	# Fake "xattr" module, if requested
 	if cfg.core.xattr_emulation:
 		import shelve
 		xattr_db = shelve.open(cfg.core.xattr_emulation, 'c')
@@ -166,7 +172,8 @@ def main():
 		class xattr_module(object): xattr = xattr_path
 		sys.modules['xattr'] = xattr_module
 
-	interface = BCInterface(cfg.core.channels)
+	# Actual init
+	interface = BCInterface(cfg.core.channels, dry_run=cfg.debug.dry_run)
 	relays = config.ep_load(
 		'bordercamp', lambda ep_type: ep_type.rstrip('s'),
 		config.ep_config( cfg,
