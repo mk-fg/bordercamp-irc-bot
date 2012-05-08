@@ -107,7 +107,7 @@ logging: # see http://docs.python.org/library/logging.config.html
     #   encoding: utf-8
     #   level: DEBUG
   # loggers:
-  #   graphite_metrics.collectors.irq:
+  #   bordercamp.relays.logtail:
   #     level: ERROR
   root:
     handlers: [console]

@@ -7,8 +7,8 @@ Rationale is simple - being an IRC addict, I already have proper real-time
 rate-limited, filtered and properly buffered/logged notificatons set up for IRC
 events, so there's no need to re-invent the wheel for occasional system
 notifications - just dump these into monitored IRC channel and let
-ZNC/client/[notification-daemon](https://github.com/mk-fg/notification-thing) do
-the rest.
+[ZNC](http://znc.in)/client/[notification-daemon](https://github.com/mk-fg/notification-thing)
+do the rest.
 
 Bot code isn't that straightforward though, as I plan to extend it to perform
 lots of miscellaneous monitoring and querying chores, so it's more of a
