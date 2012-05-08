@@ -39,7 +39,7 @@ modules:
 
   # pipe_syslog_clean:
   #   name: pipe_sub
-  #   src: '\d{4}-\d{2}-\d{2}T(\d{2}:){3}+(\d{2}:){2} (?P<channel>[\w.]+)<\d+> (?P<msg>.*)'
+  #   src: '\d{4}-\d{2}-\d{2}T(\d{2}:){2}\d{2}\+\d{2}:\d{2} (?P<channel>[\w.]+)<\d+> (?P<msg>.*)'
   #   dst: '\g<channel> \g<msg>'
   # pipe_syslog_resolve:
   #   name: pipe_resolve

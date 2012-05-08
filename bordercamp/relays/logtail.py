@@ -172,7 +172,7 @@ class Logtail(BCRelay):
 
 
 	def handle_line(self, line):
-		self.interface.relay_msg(self, line)
+		self.interface.dispatch(line.strip(), source=self)
 
 
 relay = Logtail

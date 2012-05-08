@@ -132,8 +132,8 @@ class BCInterface(object):
 				pipes.setdefault(src, list()).append((dst, route.pipe))
 		log.noise('Pipelines (by src): {}'.format(pipes))
 
-		for name, relay_obj in relays.items():
-			relays[relay_obj] = relays[name] = name
+		# Add reverse (obj -> name) mapping to relays
+		for name, relay_obj in relays.items(): relays[relay_obj] = name
 
 		self.relays, self.channels, self.routes = relays, channels, pipes
 
@@ -146,22 +146,61 @@ class BCInterface(object):
 
 	def proto_msg(self, irc, user, nick, channel, message): pass
 
-	def relay_msg(self, relay, msg):
-		relay = self.relays[relay]
-		if not self.proto: return # TODO: queue
-		if isinstance(msg, unicode):
-			try: msg = msg.encode(irc_enc)
-			except UnicodeEncodeError as err:
-				log.warn('Failed to encode ({}) unicode msg ({!r}): {}'.format(irc_enc, msg, err))
-				msg = msg.encode(irc_enc, 'replace')
-		for channel in self.channels.viewvalues():
-			max_len = self.proto._safeMaximumLineLength('PRIVMSG {} :'.format(channel)) - 2
-			first_line = True
-			for line in irc.split(msg, length=max_len):
-				if not first_line: line = '  {}'.format(line)
-				if not self.dry_run: self.proto.msg(channel.name, line)
-				else: log.info('IRC line (channel: {}): {}'.format(channel.name, line))
-				first_line = False
+
+	@defer.inlineCallbacks
+	def dispatch(self, msg, source):
+		if not isinstance(msg, list): msg = [msg]
+
+		# Pull msg through all the pipelines and build dst channels / msgs buffer
+		channels = dict()
+		for dst, pipe in self.routes[self.relays[source]]:
+			msg_copy = list(msg)
+			for name in pipe:
+				relay = self.relays[name]
+				results = yield defer.DeferredList(list(
+					defer.maybeDeferred(relay.dispatch, part) for part in msg_copy ))
+				msg_copy = set()
+				for chk, result in results:
+					if not chk:
+						log.error(
+							'Detected pipeline failure (src: {}, dst: {}, pipe: {}, relay: {}, msg: {}): {}'\
+							.format(source, dst, pipe, name, msg_copy, result) )
+					elif isinstance(result, list): msg_copy.update(result)
+					else: msg_copy.add(result)
+				msg_copy = msg_copy.difference({None})
+				if not msg_copy: break
+			else:
+				if dst in self.relays:
+					yield defer.DeferredList(list(
+						defer.maybeDeferred(dst.dispatch, msg) for msg_copy in msg_copy ))
+				else:
+					channels.setdefault(self.channels[dst].name, set()).update(msg_copy)
+
+		# Check whether anything can be delivered at all
+		if not self.proto: # TODO: queue
+			log.warn( 'Failed to deliver message(s)'
+				' ({!r}) to the following channels: {}'.format(msg, channels) )
+			defer.returnValue(None)
+
+		# Encode and deliver
+		for channel, msg in channels.viewitems():
+			for msg in msg:
+				if not isinstance(msg, str):
+					log.warn('Dropping non-str message: {!r}'.format(msg))
+					continue
+				if isinstance(msg, unicode):
+					try: msg = msg.encode(irc_enc)
+					except UnicodeEncodeError as err:
+						log.warn('Failed to encode ({}) unicode msg ({!r}): {}'.format(irc_enc, msg, err))
+						msg = msg.encode(irc_enc, 'replace')
+				max_len = self.proto._safeMaximumLineLength('PRIVMSG {} :'.format(channel)) - 2
+				first_line = True
+				for line in irc.split(msg, length=max_len):
+					if not first_line: line = '  {}'.format(line)
+					if not self.dry_run: self.proto.msg(channel, line)
+					else: log.info('IRC line (channel: {}): {}'.format(channel, line))
+					first_line = False
+
 
 
 def main():
@@ -248,7 +287,7 @@ def main():
 	interface = BCInterface(dry_run=cfg.debug.dry_run)
 
 	# Init relays
-	relays_valid = set()
+	relays_obj = dict()
 	for ep in pkg_resources.iter_entry_points('bordercamp.relays'):
 		if ep.name[0] == '_':
 			log.debug( 'Skipping entry_point with name'
@@ -267,22 +306,19 @@ def main():
 				except Exception as err:
 					log.error('Failed to load/init relay {}: {}'.format(ep.name, err))
 					obj, subconf.enabled = None, False
-			if obj and subconf.get('enabled', True):
-				relays[name] = obj
-				relays_valid.add(name)
+			if obj and subconf.get('enabled', True): relays_obj[name] = obj
 			else:
 				log.debug(( 'Entry point object {!r} (name:'
 					' {}) was disabled after init' ).format(obj, ep.name) )
-	for name in set(relays).difference(relays_valid):
+	for name in set(relays).difference(relays_obj):
 		log.debug(( 'Unused relay configuration - {}: no such'
 			' entry point - {}' ).format(name, relays[name].get('name', name)))
-		del relays[name]
-	if not relays:
+	if not relays_obj:
 		log.fatal('No relay objects were properly enabled/loaded, bailing out')
 		sys.exit(1)
-	log.debug('Enabled relays: {}'.format(relays))
+	log.debug('Enabled relays: {}'.format(relays_obj))
 
-	interface.update(relays, channels, routes)
+	interface.update(relays_obj, channels, routes)
 	endpoints\
 		.clientFromString(reactor, cfg.core.connection.endpoint)\
 		.connect(BCFactory(cfg.core, interface))
