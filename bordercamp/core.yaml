@@ -44,6 +44,7 @@ modules:
   # pipe_syslog_resolve:
   #   name: pipe_resolve
   #   addr: '^[\w.]+ .*?\[(\d+|-)\]@(?P<addr>\S+): '
+  #   short: true # return only first part of the hostname
 
   # bordercamp: # not '#bordercamp' only because it'd have to be quoted every time ;)
   #   type: channel
