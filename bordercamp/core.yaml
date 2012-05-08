@@ -16,12 +16,18 @@ modules:
 
   # "relay" modules are imported from python entry_points.
   # "channel" modules are IRC channels (usually start with '#') or nicknames.
+
   # "route" modules are special:
-  #  they poll (or receive msg(s) from) "src" module (which can be another route or a list)
-  #  then pass message through each "pipe" module
+  #  they poll (or receive msg(s) from) "src" module(s) (name or list)
+  #  then pass message through (each) "pipe" module (name or list)
   #   if any "pipe" returns None, message gets discarded
   #   pipes can return a list, meaning that several messages will be relayed further
-  #  then pass (a copy of) message(s) to (each) "dst" module(s)
+  #  then pass (a copy of) message(s) to (each) "dst" module(s) (name or list)
+  # Routes can have no "dst" and/or "src", in which case they can only be re-used.
+  # When route is used as "src", it's "src" and "pipe" parts are
+  #  prepended to the corresponding sections of the extension route.
+  # When route is used as "pipe", only it's "pipe" is used.
+  # When route is used as "dst", only it's "pipe" and "dst" parts are reused.
   # Thus it's possible to create arbitrary filters, static processing pipelines and multiplexing.
   # At least one "route" must be defined for configuration to make sense.
 
@@ -49,8 +55,8 @@ modules:
   ##  then pass the resulting messages to a "#bordercamp" IRC channel
   # log_report:
   #   type: route
-  #   src: logtail # can be a list of sources
-  #   dst: bordercamp # can be a list of destinations
+  #   src: logtail
+  #   dst: bordercamp
   #   pipe: [pipe_syslog_clean, pipe_syslog_resolve]
 
 

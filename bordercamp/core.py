@@ -78,8 +78,64 @@ class BCInterface(object):
 	irc_enc = 'utf-8'
 	proto = None
 
-	def __init__(self, channels, routes, dry_run=False):
-		self.channels, self.routes, self.dry_run = channels, routes, dry_run
+	def __init__(self, dry_run=False):
+		self.dry_run = dry_run
+
+	def update(self, relays, channels, routes):
+
+		def resolve(route, k, fork, lvl=0):
+			# print(lvl, route.name, k, fork)
+			if k not in route: route[k] = list()
+			elif isinstance(route[k], str): route[k] = [route[k]]
+			modules = list()
+			for v in route[k]:
+				if v not in routes: modules.append(v)
+				else:
+					for subroute in routes[v]:
+						if fork is None:
+							resolve(subroute, k, lvl=lvl+1)
+							modules.extend(subroute[k])
+						else:
+							fork = route.clone()
+							fork.pipe = (list(fork.pipe) + subroute.pipe)\
+								if fork is True else (subroute.pipe + list(fork.pipe))
+							resolve(subroute, k, fork=True, lvl=lvl+1)
+							fork[k] = subroute[k]
+							routes[route.name].append(fork)
+			route[k] = modules
+
+		for name, route in routes.viewitems(): routes[name] = [route]
+		for k, fork in ('pipe', None), ('src', True), ('dst', False):
+			for name, route_set in routes.items():
+				for route in route_set:
+					if k == 'pipe':
+						for v in route.pipe:
+							if v in channels:
+								log.fatal( 'Channels are not allowed'
+									' in route.pipe sections (route: {}, channel: {})'.format(name, v) )
+								sys.exit(1)
+					route.name = name
+					resolve(route, k, fork=fork)
+
+		pipes, pipes_chk = dict(), set()
+		pipes_valid = set(relays).union(channels)
+		for route in it.chain.from_iterable(routes.viewvalues()):
+			if not route.src or not route.dst: continue
+			for src, dst in it.product(route.src, route.dst):
+				pipe = tuple([src] + route.pipe + [dst])
+				if pipe in pipes_chk: continue
+				for v in pipe:
+					if v not in pipes_valid:
+						log.fatal('Unknown route component (route: {}): {}'.format(route.name, v))
+						sys.exit(1)
+				pipes_chk.add(pipe) # to eliminate duplicates
+				pipes.setdefault(src, list()).append((dst, route.pipe))
+		log.noise('Pipelines (by src): {}'.format(pipes))
+
+		for name, relay_obj in relays.items():
+			relays[relay_obj] = relays[name] = name
+
+		self.relays, self.channels, self.routes = relays, channels, pipes
 
 	def proto_on(self, irc):
 		self.proto = irc
@@ -87,9 +143,11 @@ class BCInterface(object):
 			log.debug('Joining channel: {}'.format(channel.name))
 			self.proto.join(channel.name)
 	def proto_off(self, irc): self.proto = None
+
 	def proto_msg(self, irc, user, nick, channel, message): pass
 
 	def relay_msg(self, relay, msg):
+		relay = self.relays[relay]
 		if not self.proto: return # TODO: queue
 		if isinstance(msg, unicode):
 			try: msg = msg.encode(irc_enc)
@@ -187,39 +245,44 @@ def main():
 		for subtype in ['relay', 'channel', 'route'] )
 
 	# Init interface
-	interface = BCInterface(channels, routes, dry_run=cfg.debug.dry_run)
+	interface = BCInterface(dry_run=cfg.debug.dry_run)
 
 	# Init relays
-	relays = dict()
+	relays_valid = set()
 	for ep in pkg_resources.iter_entry_points('bordercamp.relays'):
 		if ep.name[0] == '_':
-			log.debug( 'Skipping relay name'
+			log.debug( 'Skipping entry_point with name'
 				' prefixed by underscore: {}'.format(ep.name) )
 			continue
-		try:
-			subconf = conf[ep.name]
-			if subconf['type'] != 'relay': raise KeyError(None)
-		except KeyError as err:
-			log.debug(( 'Initializing relay {} with'
-				' base config (missing key: {})' ).format(ep.name, err))
-			subconf = conf_base.clone()
-		if subconf.get('enabled', True):
-			log.debug('Loading relay: {}'.format(ep.name))
-			try:
-				obj = ep.load().relay(subconf, interface=interface)
-				if not obj: raise AssertionError('Empty object')
-			except Exception as err:
-				log.error('Failed to load/init relay {}: {}'.format(ep.name, err))
-				obj, subconf.enabled = None, False
-		if obj and subconf.get('enabled', True): relays[ep.name] = obj
-		else:
-			log.debug(( 'Entry point object {!r} (name:'
-				' {}) was disabled after init' ).format(obj, ep.name) )
+		ep_relays = list( (name, subconf)
+			for name, subconf in relays.viewitems()
+			if subconf.get('name', name) == ep.name )
+		if not ep_relays: ep_relays = [(ep.name, conf_base.clone())]
+		for name, subconf in ep_relays:
+			if subconf.get('enabled', True):
+				log.debug('Loading relay: {}'.format(ep.name))
+				try:
+					obj = ep.load().relay(subconf, interface=interface)
+					if not obj: raise AssertionError('Empty object')
+				except Exception as err:
+					log.error('Failed to load/init relay {}: {}'.format(ep.name, err))
+					obj, subconf.enabled = None, False
+			if obj and subconf.get('enabled', True):
+				relays[name] = obj
+				relays_valid.add(name)
+			else:
+				log.debug(( 'Entry point object {!r} (name:'
+					' {}) was disabled after init' ).format(obj, ep.name) )
+	for name in set(relays).difference(relays_valid):
+		log.debug(( 'Unused relay configuration - {}: no such'
+			' entry point - {}' ).format(name, relays[name].get('name', name)))
+		del relays[name]
 	if not relays:
 		log.fatal('No relay objects were properly enabled/loaded, bailing out')
 		sys.exit(1)
 	log.debug('Enabled relays: {}'.format(relays))
 
+	interface.update(relays, channels, routes)
 	endpoints\
 		.clientFromString(reactor, cfg.core.connection.endpoint)\
 		.connect(BCFactory(cfg.core, interface))
