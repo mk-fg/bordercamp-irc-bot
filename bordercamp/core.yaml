@@ -1,22 +1,62 @@
 ### Default (baseline) configuration parameters.
 ### DO NOT ever change this config, use -c commandline option instead!
 
-relays:
+modules:
 
   _default: # used as a base for all other sections here
     enabled: true
-    channel: bordercamp # alias from core.channels
+    type: relay # for most of them anyway
     # debug: # auto-filled from global "debug" section, if not specified
 
-  logtail:
-    monitor: '/var/log/syslog/{test,stripped}.log' # glob pattern or a list of them
-    xattr_name: user.bordercamp.logtail.pos # used to mark "last position" in logs b/w restarts
+  # module_name: <-- alias name, used in "route" modules, must not start with an underscore
+  #   enabled: true # disabled relays just pass stuff through, routes/channels act as /dev/null
+  #   type: <-- one of: relay, channel, route
+  #   name: <-- entry_point (python module) name, defaults to alias name above
+  #   ... <-- all the contents will be passed as module configuration
 
+  # "relay" modules are imported from python entry_points.
+  # "channel" modules are IRC channels (usually start with '#') or nicknames.
+  # "route" modules are special:
+  #  they poll (or receive msg(s) from) "src" module (which can be another route or a list)
+  #  then pass message through each "pipe" module
+  #   if any "pipe" returns None, message gets discarded
+  #   pipes can return a list, meaning that several messages will be relayed further
+  #  then pass (a copy of) message(s) to (each) "dst" module(s)
+  # Thus it's possible to create arbitrary filters, static processing pipelines and multiplexing.
+  # At least one "route" must be defined for configuration to make sense.
+
+  ## Example configuration:
+
+  # logtail:
+  #   monitor: '/var/log/{messages,*.log}' # glob pattern or a list of them
+  #   xattr_name: user.bordercamp.logtail.pos # used to mark "last position" in logs b/w restarts
+
+  # pipe_syslog_clean:
+  #   name: pipe_sub
+  #   src: '\d{4}-\d{2}-\d{2}T(\d{2}:){3}+(\d{2}:){2} (?P<channel>[\w.]+)<\d+> (?P<msg>.*)'
+  #   dst: '\g<channel> \g<msg>'
+  # pipe_syslog_resolve:
+  #   name: pipe_resolve
+  #   addr: '^[\w.]+ .*?\[(\d+|-)\]@(?P<addr>\S+): '
+
+  # bordercamp: # not '#bordercamp' only because it'd have to be quoted every time ;)
+  #   type: channel
+  #   name: '#bordercamp'
+
+  ## Use "logtail" module to monitor logs for new lines
+  ##  then process them with regexes using "pipe_sub" module
+  ##  then resolve IPs found there (by regex) with  "pipe_resolve"
+  ##  then pass the resulting messages to a "#bordercamp" IRC channel
+  # log_report:
+  #   type: route
+  #   src: logtail # can be a list of sources
+  #   dst: bordercamp # can be a list of destinations
+  #   pipe: [pipe_syslog_clean, pipe_syslog_resolve]
 
 
 core:
 
-  connection:
+  connection: # only one server connection is supported atm
     # twisted endpoint syntax, see twisted.internet.endpoints.html#clientFromString
     endpoint: tcp:host=localhost:port=6667
 
@@ -33,13 +73,9 @@ core:
       jitter: 0.2
       # maxRetries:
 
-    heartbeat: 60 # pings to hostname
+    heartbeat: 60 # interval b/w pings to own hostname
 
   nickname_lstrip: '*?@~&%+' # various owner/mode prefixes
-
-  channels:
-    bordercamp:
-      name: '#bordercamp'
 
   # Emulate xattr module interface with simple k-v db for modules that use it
   # Can be useful if xattr manipulation is limited by permissions (e.g. read-only) or fs capabilities

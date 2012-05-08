@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import itertools as it, operator as op, functools as ft
 from datetime import datetime
-import os, sys
+import os, sys, pkg_resources
 
 from twisted.internet import reactor, endpoints, protocol, error, task, defer
 from twisted.words.protocols import irc
@@ -39,9 +39,6 @@ class BCBot(irc.IRCClient):
 
 	def signedOn(self):
 		log.debug('Signed on')
-		for alias, channel in self.conf.channels.viewitems():
-			log.debug('Joining channel: {}'.format(channel.name))
-			self.join(channel.name)
 		self.interface.proto_on(self)
 
 	def joined(self, channel): # znc somehow omits these, it seems
@@ -81,27 +78,32 @@ class BCInterface(object):
 	irc_enc = 'utf-8'
 	proto = None
 
-	def __init__(self, conf, dry_run=False):
-		self.conf, self.dry_run = conf, dry_run
+	def __init__(self, channels, routes, dry_run=False):
+		self.channels, self.routes, self.dry_run = channels, routes, dry_run
 
-	def proto_on(self, irc): self.proto = irc
+	def proto_on(self, irc):
+		self.proto = irc
+		for alias, channel in self.channels.viewitems():
+			log.debug('Joining channel: {}'.format(channel.name))
+			self.proto.join(channel.name)
 	def proto_off(self, irc): self.proto = None
 	def proto_msg(self, irc, user, nick, channel, message): pass
 
-	def relay_msg(self, relay, channel, msg):
+	def relay_msg(self, relay, msg):
 		if not self.proto: return # TODO: queue
 		if isinstance(msg, unicode):
 			try: msg = msg.encode(irc_enc)
 			except UnicodeEncodeError as err:
 				log.warn('Failed to encode ({}) unicode msg ({!r}): {}'.format(irc_enc, msg, err))
 				msg = msg.encode(irc_enc, 'replace')
-		max_len = self.proto._safeMaximumLineLength('PRIVMSG {} :'.format(channel)) - 2
-		first_line, channel = True, self.conf[channel]
-		for line in irc.split(msg, length=max_len):
-			if not first_line: line = '  {}'.format(line)
-			if not self.dry_run: self.proto.msg(channel.name, line)
-			else: log.info('IRC line (channel: {}): {}'.format(channel.name, line))
-			first_line = False
+		for channel in self.channels.viewvalues():
+			max_len = self.proto._safeMaximumLineLength('PRIVMSG {} :'.format(channel)) - 2
+			first_line = True
+			for line in irc.split(msg, length=max_len):
+				if not first_line: line = '  {}'.format(line)
+				if not self.dry_run: self.proto.msg(channel.name, line)
+				else: log.info('IRC line (channel: {}): {}'.format(channel.name, line))
+				first_line = False
 
 
 def main():
@@ -133,15 +135,15 @@ def main():
 		action='store_true', help='Even more verbose mode than --debug.')
 	optz = parser.parse_args()
 
-	# Read configuration files
+	## Read configuration files
 	cfg = config.AttrDict.from_yaml('{}.yaml'.format(
 		os.path.splitext(os.path.realpath(__file__))[0] ))
 	for k in optz.config: cfg.update_yaml(k)
 
-	# CLI overrides
+	## CLI overrides
 	if optz.dry_run: cfg.debug.dry_run = optz.dry_run
 
-	# Logging
+	## Logging
 	import logging
 	logging.NOISE = logging.DEBUG - 1
 	logging.addLevelName(logging.NOISE, 'NOISE')
@@ -157,7 +159,7 @@ def main():
 		setattr(log, func, ft.partial( log.msg,
 			logLevel=logging.getLevelName(lvl.upper()) ))
 
-	# Fake "xattr" module, if requested
+	## Fake "xattr" module, if requested
 	if cfg.core.xattr_emulation:
 		import shelve
 		xattr_db = shelve.open(cfg.core.xattr_emulation, 'c')
@@ -172,14 +174,52 @@ def main():
 		class xattr_module(object): xattr = xattr_path
 		sys.modules['xattr'] = xattr_module
 
-	# Actual init
-	interface = BCInterface(cfg.core.channels, dry_run=cfg.debug.dry_run)
-	relays = config.ep_load(
-		'bordercamp', lambda ep_type: ep_type.rstrip('s'),
-		config.ep_config( cfg,
-			[dict( ep='relays', init_kwz=dict(interface=interface),
-				enabled=optz.relay_enable, disabled=optz.relay_disable )] ),
-		log=log )
+	## Actual init
+	# Merge entry points configuration with CLI opts
+	conf = config.ep_config( cfg,
+		[dict( ep='modules',
+			enabled=optz.relay_enable, disabled=optz.relay_disable )] )
+	conf_base, conf = conf['modules']
+	for subconf in conf.viewvalues(): subconf.rebase(conf_base)
+	relays, channels, routes = (
+		dict( (name, subconf) for name,subconf in conf.viewitems()
+		if name[0] != '_' and subconf.get('type') == subtype )
+		for subtype in ['relay', 'channel', 'route'] )
+
+	# Init interface
+	interface = BCInterface(channels, routes, dry_run=cfg.debug.dry_run)
+
+	# Init relays
+	relays = dict()
+	for ep in pkg_resources.iter_entry_points('bordercamp.relays'):
+		if ep.name[0] == '_':
+			log.debug( 'Skipping relay name'
+				' prefixed by underscore: {}'.format(ep.name) )
+			continue
+		try:
+			subconf = conf[ep.name]
+			if subconf['type'] != 'relay': raise KeyError(None)
+		except KeyError as err:
+			log.debug(( 'Initializing relay {} with'
+				' base config (missing key: {})' ).format(ep.name, err))
+			subconf = conf_base.clone()
+		if subconf.get('enabled', True):
+			log.debug('Loading relay: {}'.format(ep.name))
+			try:
+				obj = ep.load().relay(subconf, interface=interface)
+				if not obj: raise AssertionError('Empty object')
+			except Exception as err:
+				log.error('Failed to load/init relay {}: {}'.format(ep.name, err))
+				obj, subconf.enabled = None, False
+		if obj and subconf.get('enabled', True): relays[ep.name] = obj
+		else:
+			log.debug(( 'Entry point object {!r} (name:'
+				' {}) was disabled after init' ).format(obj, ep.name) )
+	if not relays:
+		log.fatal('No relay objects were properly enabled/loaded, bailing out')
+		sys.exit(1)
+	log.debug('Enabled relays: {}'.format(relays))
+
 	endpoints\
 		.clientFromString(reactor, cfg.core.connection.endpoint)\
 		.connect(BCFactory(cfg.core, interface))
