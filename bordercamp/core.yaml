@@ -77,6 +77,14 @@ core:
     # password:
     # userinfo:
 
+    server:
+      # Create a private irc server on the specified endpoint, instead of just connecting there.
+      endpoint: # only if enabled, example: tcp:6667:interface=localhost
+      name: bordercamp
+      passwd: # {user: password, ...} dict for ACLs
+        # no need to create acl for a bot itself here
+        # alice: secretpassword
+
     reconnect: # see twisted.internet.protocol.ReconnectingClientFactory
       maxDelay: 30
       initialDelay: 1

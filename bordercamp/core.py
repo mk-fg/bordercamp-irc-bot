@@ -8,6 +8,8 @@ import os, sys, pkg_resources
 
 from twisted.internet import reactor, endpoints, protocol, error, task, defer
 from twisted.words.protocols import irc
+from twisted.words.service import IRCFactory, InMemoryWordsRealm
+from twisted.cred import checkers, credentials, portal
 from twisted.python import log
 
 from bordercamp import config
@@ -60,7 +62,7 @@ class BCBot(irc.IRCClient):
 
 
 
-class BCFactory(protocol.ReconnectingClientFactory):
+class BCClientFactory(protocol.ReconnectingClientFactory):
 
 	protocol = property(lambda s: ft.partial(BCBot, s.conf, s.interface))
 
@@ -68,6 +70,20 @@ class BCFactory(protocol.ReconnectingClientFactory):
 		self.conf, self.interface = conf, interface
 		for k,v in self.conf.connection.reconnect.viewitems(): setattr(self, k, v)
 
+
+class BCServerFactory(IRCFactory):
+
+	def __init__(self, conf, *channels, **extra_creds):
+		self.conf = conf
+		realm = InMemoryWordsRealm(self.conf.name)
+		passwd = (self.conf.passwd or dict()).copy()
+		passwd.update(extra_creds)
+		realm_portal = portal.Portal(realm, [
+			checkers.InMemoryUsernamePasswordDatabaseDontUse(**passwd) ])
+		for channel in channels:
+			if channel[0] == '#': channel = channel[1:]
+			realm.createGroup(unicode(channel))
+		IRCFactory.__init__(self, realm, realm_portal)
 
 
 class BCInterface(object):
@@ -319,10 +335,28 @@ def main():
 		sys.exit(1)
 	log.debug('Enabled relays: {}'.format(relays_obj))
 
+	# Relays-client interface
 	interface.update(relays_obj, channels, routes)
+
+	# Server
+	if cfg.core.connection.server.endpoint:
+		password = cfg.core.connection.get('password')
+		if not password:
+			from hashlib import sha1
+			password = cfg.core.connection.password =\
+				sha1(open('/dev/urandom', 'rb').read(120/8)).hexdigest()
+		factory = BCServerFactory(
+			cfg.core.connection.server,
+			*(chan.get('name', name) for name,chan in channels.viewitems()),
+			**{cfg.core.connection.nickname: password} )
+		endpoints\
+			.serverFromString(reactor, cfg.core.connection.server.endpoint)\
+			.listen(factory)
+
+	# Client
 	endpoints\
 		.clientFromString(reactor, cfg.core.connection.endpoint)\
-		.connect(BCFactory(cfg.core, interface))
+		.connect(BCClientFactory(cfg.core, interface))
 
 	log.debug('Starting event loop')
 	reactor.run()
