@@ -23,7 +23,8 @@ class BCBot(irc.IRCClient):
 	def __init__(self, conf, interface):
 		self.conf, self.interface = conf, interface
 		self.heartbeatInterval = self.conf.connection.heartbeat
-		for k in 'realname', 'username', 'password', 'userinfo':
+		for k in 'nickname', 'realname',\
+				'username', 'password', 'userinfo', 'nickname':
 			v = self.conf.connection.get(k)
 			if v: setattr(self, k, v)
 
