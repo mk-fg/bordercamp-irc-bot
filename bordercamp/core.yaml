@@ -36,6 +36,10 @@ modules:
   # logtail:
   #   monitor: '/var/log/{messages,*.log}' # glob pattern or a list of them
   #   xattr_name: user.bordercamp.logtail.pos # used to mark "last position" in logs b/w restarts
+  #   # processing_delay (float, seconds) allows some time for new log creator
+  #   #  (e.g. syslogd, logrotate) to fill/chmod file and processes all the new lines
+  #   #  in one batch, thus minizing the number of stat()/open() calls.
+  #   processing_delay: 1.0
 
   # pipe_syslog_clean:
   #   name: pipe_sub

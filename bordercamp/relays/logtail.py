@@ -5,7 +5,6 @@ import itertools as it, operator as op, functools as ft
 from glob import glob
 from fnmatch import fnmatch
 from hashlib import sha1
-from io import open
 import os, sys, re, pickle
 
 from xattr import xattr
@@ -17,23 +16,83 @@ from twisted.python import log
 from . import BCRelay
 
 
+
+class ReliableInotify(inotify.INotify):
+
+	def __init__( self, paths_watch, callback, errback,
+			mask=inotify.IN_CREATE | inotify.IN_MODIFY ):
+		inotify.INotify.__init__(self)
+
+		# Might as well start it here
+		self.startReading()
+		self.errback = errback
+		for path in paths_watch:
+			log.debug('Adding watcher for path: {}'.format(path))
+			self.watch(path, mask=mask, callbacks=[callback])
+
+	def connectionLost(self, reason):
+		log.warn( 'Detected inotify'
+			' connectionLost event, reason: {}'.format(reason) )
+		self.errback(reason)
+
+
+
 class Logtail(BCRelay):
 
 
 	def __init__(self, *argz, **kwz):
 		super(Logtail, self).__init__(*argz, **kwz)
 
-		self.paths_pos = dict()
-		self.paths_watch = dict()
-		self.paths_buff = dict()
+		paths_watch = self.paths_watch = dict()
+		self.paths_pos, self.paths_buff = dict(), dict()
 
-		self.notifier = inotify.INotify()
-		self.notifier.startReading()
-
-		masks = self.conf.monitor
+		masks, paths = self.conf.monitor, list()
 		if isinstance(masks, bytes): masks = [masks]
-		for mask in masks: self.monitor(mask)
+		for mask in masks:
+			mask_patterns = self.glob_alter(mask)
+			for mask_raw in mask_patterns:
+				mask = FilePath(mask_raw)
+				# All matched parent dirs - like /x/y/z for /x/*/z/file* - are watched for pattern
+				# Note that watchers won't be auto-added for /x/m/z, if it'll be created later on
+				paths_ext = list( (path.realpath(), mask.basename())
+					for path in it.imap(FilePath, glob(mask.dirname())) )
+				paths.extend(paths_ext)
+				# If full pattern already match something, watch it if it's a dir - /x/dir1 for /x/dir*
+				# Note that watchers won't be auto-added for /x/dir2, if it'll be created later on
+				if paths_ext: # no point going deeper if parent dirs don't exist
+					paths.extend( (path.realpath(), '*')
+						for path in it.imap(FilePath, glob(mask_raw))
+						if path.realpath().isdir() )
+		# Aggregate path masks by-realpath
+		for path, mask in paths:
+			if not path.isdir():
+				log.debug('Skipping special path: {}'.format(path))
+				continue
+			if path not in paths_watch:
+				paths_watch[path] = {mask}
+			else: paths_watch[path].add(mask)
 
+		self.notifier_restart()
+
+	def notifier_restart(self, reason=None):
+		log.debug('Starting inotify watcher')
+		# errback happens if some IOError gets raised in a direct callback
+		self.notifier = ReliableInotify( self.paths_watch,
+			ft.partial( reactor.callLater, self.conf.processing_delay,
+				self.handle_change ), self.notifier_restart )
+
+
+	@staticmethod
+	def glob_alter(pattern, _glob_cbex = re.compile(r'\{[^}]+\}')):
+		'''Shell-like glob with support for curly braces.
+			Usage of these braces in the actual name isn't supported.'''
+		subs = list()
+		while True:
+			ex = _glob_cbex.search(pattern)
+			if not ex: break
+			subs.append(ex.group(0)[1:-1].split(','))
+			pattern = pattern[:ex.span()[0]] + '{}' + pattern[ex.span()[1]:]
+		return list(it.starmap(pattern.format, it.product(*subs)))
 
 	@staticmethod
 	def file_end_mark(path, size=200, pos=None, data=None):
@@ -60,46 +119,6 @@ class Logtail(BCRelay):
 				if len(data) != size: return False # not the end
 				if sha1(data).hexdigest() != data_hash: return False # not the *same* end
 		return True
-
-	@staticmethod
-	def glob(pattern, _glob_cbex = re.compile(r'\{[^}]+\}')):
-		'''Shell-like glob with support for curly braces.
-			Usage of these braces in the actual name isn't supported.'''
-		subs = list()
-		while True:
-			ex = _glob_cbex.search(pattern)
-			if not ex: break
-			subs.append(ex.group(0)[1:-1].split(','))
-			pattern = pattern[:ex.span()[0]] + '{}' + pattern[ex.span()[1]:]
-		return list(it.chain.from_iterable(
-				glob(pattern.format(*combo))
-				for combo in it.product(*subs) ))\
-			if subs else glob(pattern)
-
-
-	def monitor(self, path_mask):
-		paths_watch, paths = self.paths_watch, self.glob(path_mask)
-		for path in it.imap(FilePath, paths):
-			path_real = path.realpath()
-			# Matched regular files are watched as a basename pattern in the dir
-			if path_real.isfile():
-				path_dir = path.parent().realpath()
-				if path_dir not in paths_watch:
-					paths_watch[path_dir] = {path.basename()}
-				else: paths_watch[path_dir].add(path.basename())
-			# All files in the matched dirs are watched, non-recursively
-			elif path_real.isdir():
-				if path_real not in paths_watch: paths_watch[path_real] = {'*'}
-				else: paths_watch[path_real].add('*')
-				for name in path_real.listdir():
-					path_child = path_real.child(name).realpath()
-			# Specials of any kind are ignored
-			else: log.debug('Skipping non-file/dir path: {}'.format(path_real))
-		for path in paths_watch:
-			log.debug('Adding watcher for path: {}'.format(path))
-			self.notifier.watch( path,
-				mask=inotify.IN_CREATE | inotify.IN_MODIFY,
-				callbacks=[self.handle_change] )
 
 
 	def handle_change(self, stuff, path, mask):
@@ -147,7 +166,7 @@ class Logtail(BCRelay):
 
 		## Actual processing
 		line = self.paths_buff.setdefault(path_real, '')
-		with path_real.open('rb') as src:
+		with path_real.open() as src:
 			if pos:
 				src.seek(pos)
 				pos = None
