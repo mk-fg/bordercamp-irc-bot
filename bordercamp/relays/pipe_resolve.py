@@ -25,7 +25,7 @@ class Resolver(BCRelay):
 				('addr', lambda addr: socket.gethostbyaddr(addr)[0]),
 				('host', lambda host: socket.gethostbyname_ex(host)[3][0]) ]:
 			try: group = match.group(sub)
-			except KeyError: continue
+			except IndexError: continue
 			try: group = func(group)
 			except (socket.herror, IndexError) as err:
 				log.debug('Failed to resolve {} ({}): {}'.format(sub, group, err))
