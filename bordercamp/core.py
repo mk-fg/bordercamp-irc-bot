@@ -108,13 +108,13 @@ def main():
 			if subconf.get('name', name) == ep.name )
 		if not ep_relays: ep_relays = [(ep.name, conf_base.clone())]
 		for name, subconf in ep_relays:
+			try: relay_defaults = conf_def[ep.name]
+			except KeyError: pass
+			else:
+				subconf.rebase(relay_defaults)
+				subconf.rebase(conf_def_base)
 			if subconf.get('enabled', True):
 				log.debug('Loading relay: {} ({})'.format(name, ep.name))
-				try: relay_defaults = conf_def[ep.name]
-				except KeyError: pass
-				else:
-					subconf.rebase(relay_defaults)
-					subconf.rebase(conf_def_base)
 				try:
 					obj = ep.load().relay(subconf, interface=interface)
 					if not obj: raise AssertionError('Empty object')
