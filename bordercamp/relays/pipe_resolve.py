@@ -21,13 +21,17 @@ class Resolver(BCRelay):
 		if not match:
 			log.debug('Failed to match address, msg: {!r}'.format(msg))
 			return msg
-		addr = match.group('addr')
-		try: addr = socket.gethostbyaddr(addr)[0]
-		except socket.herror as err:
-			log.debug('Failed to resolve address to hostname ({}): {}'.format(addr, err))
-		else:
-			if self.conf.get('short', False): addr = addr.split('.', 1)[0]
-		return msg[:match.start('addr')] + addr + msg[match.end('addr'):]
+		for sub, func in [
+				('addr', lambda addr: socket.gethostbyaddr(addr)[0]),
+				('host', lambda host: socket.gethostbyname_ex(host)[3][0]) ]:
+			try: group = match.group(sub)
+			except KeyError: continue
+			try: group = func(group)
+			except (socket.herror, IndexError) as err:
+				log.debug('Failed to resolve {} ({}): {}'.format(sub, group, err))
+			else:
+				if sub == 'addr' and self.conf.get('short', False): group = group.split('.', 1)[0]
+			return msg[:match.start(sub)] + group + msg[match.end(sub):]
 
 
 relay = Resolver
