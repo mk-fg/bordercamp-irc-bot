@@ -6,7 +6,7 @@ from datetime import datetime
 import os, sys
 
 from twisted.internet import reactor, protocol, defer
-from twisted.words.service import IRCFactory, InMemoryWordsRealm
+from twisted.words.service import IRCUser, IRCFactory, InMemoryWordsRealm
 from twisted.cred import checkers, credentials, portal
 from twisted.words.protocols import irc
 from twisted.python import log
@@ -68,7 +68,15 @@ class BCClientFactory(protocol.ReconnectingClientFactory):
 		for k,v in self.conf.connection.reconnect.viewitems(): setattr(self, k, v)
 
 
+class BCIRCUser(IRCUser):
+
+	def irc_unknown(self, prefix, command, params):
+		log.info('Ignoring unhandled irc command: {!r}'.format([prefix, command, params]))
+
+
 class BCServerFactory(IRCFactory):
+
+	protocol = BCIRCUser
 
 	def __init__(self, conf, *channels, **extra_creds):
 		self.conf = conf
