@@ -3,221 +3,12 @@
 from __future__ import print_function
 
 import itertools as it, operator as op, functools as ft
-from datetime import datetime
 import os, sys, pkg_resources
 
-from twisted.internet import reactor, endpoints, protocol, error, task, defer
-from twisted.words.protocols import irc
-from twisted.words.service import IRCFactory, InMemoryWordsRealm
-from twisted.cred import checkers, credentials, portal
+from twisted.internet import reactor, endpoints, protocol, defer
 from twisted.python import log
 
-from bordercamp import config
-
-
-class BCBot(irc.IRCClient):
-
-	versionName, versionEnv = 'bordercamp', '{1} ({0})'.format(*os.uname()[:2])
-	versionNum = '.'.join( bytes(int(num)) for num in
-		datetime.fromtimestamp(os.stat(__file__).st_mtime).strftime('%y %m %d').split() )
-	sourceURL = 'http://github.com/mk-fg/bordercamp-irc-bot'
-
-	def __init__(self, conf, interface):
-		self.conf, self.interface = conf, interface
-		self.heartbeatInterval = self.conf.connection.heartbeat
-		for k in 'nickname', 'realname',\
-				'username', 'password', 'userinfo', 'nickname':
-			v = self.conf.connection.get(k)
-			if v: setattr(self, k, v)
-
-	def connectionMade(self):
-		irc.IRCClient.connectionMade(self)
-		log.debug('Connected to IRC server')
-
-	def connectionLost(self, reason):
-		log.debug('Lost connection to the IRC server: {}'.format(reason))
-		irc.IRCClient.connectionLost(self, reason)
-		self.interface.proto_off(self)
-
-
-	def signedOn(self):
-		log.debug('Signed on')
-		self.interface.proto_on(self)
-
-	def joined(self, channel): # znc somehow omits these, it seems
-		log.debug('Joined channel: {}'.format(channel))
-
-
-	def privmsg(self, user, channel, message):
-		nick = user.split('!', 1)[0]
-		if self.conf.nickname_lstrip: nick = nick.lstrip(self.conf.nickname_lstrip)
-		log.debug('Got msg: {}'.format([user, nick, channel, message]))
-		self.interface.proto_msg(self, user, nick, channel, message)
-
-	def action(self, user, channel, message):
-		self.privmsg(user, channel, '/me {}'.format(message))
-
-	def noticed(self, user, channel, message):
-		self.privmsg(user, channel, '/notice {}'.format(message))
-
-
-
-class BCClientFactory(protocol.ReconnectingClientFactory):
-
-	protocol = property(lambda s: ft.partial(BCBot, s.conf, s.interface))
-
-	def __init__(self, conf, interface):
-		self.conf, self.interface = conf, interface
-		for k,v in self.conf.connection.reconnect.viewitems(): setattr(self, k, v)
-
-
-class BCServerFactory(IRCFactory):
-
-	def __init__(self, conf, *channels, **extra_creds):
-		self.conf = conf
-		realm = InMemoryWordsRealm(self.conf.name)
-		passwd = (self.conf.passwd or dict()).copy()
-		passwd.update(extra_creds)
-		realm_portal = portal.Portal(realm, [
-			checkers.InMemoryUsernamePasswordDatabaseDontUse(**passwd) ])
-		for channel in channels:
-			if channel[0] == '#': channel = channel[1:]
-			realm.createGroup(unicode(channel))
-		IRCFactory.__init__(self, realm, realm_portal)
-
-
-class BCInterface(object):
-	'''Persistent "interface" object sitting in-between persistent relay objects
-		and transient protocol objects, queueing/multiplexing messages from
-		relays to the protocols and messages/events from protocols to relays.'''
-	# TODO: rate control, UDP interface
-
-	irc_enc = 'utf-8'
-	proto = None
-
-	def __init__(self, dry_run=False):
-		self.dry_run = dry_run
-
-	def update(self, relays, channels, routes):
-
-		def resolve(route, k, fork, lvl=0):
-			# print(lvl, route.name, k, fork)
-			if k not in route: route[k] = list()
-			elif isinstance(route[k], str): route[k] = [route[k]]
-			modules = list()
-			for v in route[k]:
-				if v not in routes: modules.append(v)
-				else:
-					for subroute in routes[v]:
-						if fork is None:
-							resolve(subroute, k, lvl=lvl+1)
-							modules.extend(subroute[k])
-						else:
-							fork = route.clone()
-							fork.pipe = (list(fork.pipe) + subroute.pipe)\
-								if fork is True else (subroute.pipe + list(fork.pipe))
-							resolve(subroute, k, fork=True, lvl=lvl+1)
-							fork[k] = subroute[k]
-							routes[route.name].append(fork)
-			route[k] = modules
-
-		for name, route in routes.viewitems(): routes[name] = [route]
-		for k, fork in ('pipe', None), ('src', True), ('dst', False):
-			for name, route_set in routes.items():
-				for route in route_set:
-					if k == 'pipe':
-						for v in route.pipe:
-							if v in channels:
-								log.fatal( 'Channels are not allowed'
-									' in route.pipe sections (route: {}, channel: {})'.format(name, v) )
-								sys.exit(1)
-					route.name = name
-					resolve(route, k, fork=fork)
-
-		pipes, pipes_chk = dict(), set()
-		pipes_valid = set(relays).union(channels)
-		for route in it.chain.from_iterable(routes.viewvalues()):
-			if not route.src or not route.dst: continue
-			for src, dst in it.product(route.src, route.dst):
-				pipe = tuple([src] + route.pipe + [dst])
-				if pipe in pipes_chk: continue
-				for v in pipe:
-					if v not in pipes_valid:
-						log.fatal('Unknown route component (route: {}): {}'.format(route.name, v))
-						sys.exit(1)
-				pipes_chk.add(pipe) # to eliminate duplicates
-				pipes.setdefault(src, list()).append((dst, route.pipe))
-		log.noise('Pipelines (by src): {}'.format(pipes))
-
-		# Add reverse (obj -> name) mapping to relays
-		for name, relay_obj in relays.items(): relays[relay_obj] = name
-
-		self.relays, self.channels, self.routes = relays, channels, pipes
-
-	def proto_on(self, irc):
-		self.proto = irc
-		for alias, channel in self.channels.viewitems():
-			log.debug('Joining channel: {}'.format(channel.name))
-			self.proto.join(channel.name)
-	def proto_off(self, irc): self.proto = None
-
-	def proto_msg(self, irc, user, nick, channel, message): pass
-
-
-	@defer.inlineCallbacks
-	def dispatch(self, msg, source):
-		if not isinstance(msg, list): msg = [msg]
-
-		# Pull msg through all the pipelines and build dst channels / msgs buffer
-		channels = dict()
-		for dst, pipe in self.routes[self.relays[source]]:
-			msg_copy = list(msg)
-			for name in pipe:
-				relay = self.relays[name]
-				results = yield defer.DeferredList(list(
-					defer.maybeDeferred(relay.dispatch, part) for part in msg_copy ))
-				msg_copy = set()
-				for chk, result in results:
-					if not chk:
-						log.error(
-							'Detected pipeline failure (src: {}, dst: {}, pipe: {}, relay: {}, msg: {}): {}'\
-							.format(source, dst, pipe, name, msg_copy, result) )
-					elif isinstance(result, list): msg_copy.update(result)
-					else: msg_copy.add(result)
-				msg_copy = msg_copy.difference({None})
-				if not msg_copy: break
-			else:
-				if dst in self.relays:
-					yield defer.DeferredList(list(
-						defer.maybeDeferred(dst.dispatch, msg) for msg_copy in msg_copy ))
-				else:
-					channels.setdefault(self.channels[dst].name, set()).update(msg_copy)
-
-		# Check whether anything can be delivered at all
-		if not self.proto: # TODO: queue
-			log.warn( 'Failed to deliver message(s)'
-				' ({!r}) to the following channels: {}'.format(msg, channels) )
-			defer.returnValue(None)
-
-		# Encode and deliver
-		for channel, msg in channels.viewitems():
-			for msg in msg:
-				if not isinstance(msg, str):
-					log.warn('Dropping non-str message: {!r}'.format(msg))
-					continue
-				if isinstance(msg, unicode):
-					try: msg = msg.encode(irc_enc)
-					except UnicodeEncodeError as err:
-						log.warn('Failed to encode ({}) unicode msg ({!r}): {}'.format(irc_enc, msg, err))
-						msg = msg.encode(irc_enc, 'replace')
-				max_len = self.proto._safeMaximumLineLength('PRIVMSG {} :'.format(channel)) - 2
-				first_line = True
-				for line in irc.split(msg, length=max_len):
-					if not first_line: line = '  {}'.format(line)
-					if not self.dry_run: self.proto.msg(channel, line)
-					else: log.info('IRC line (channel: {}): {}'.format(channel, line))
-					first_line = False
-
+from bordercamp import config, irc, routing
 
 
 def main():
@@ -301,7 +92,7 @@ def main():
 		for subtype in ['relay', 'channel', 'route'] )
 
 	# Init interface
-	interface = BCInterface(dry_run=cfg.debug.dry_run)
+	interface = routing.BCInterface(dry_run=cfg.debug.dry_run)
 
 	# Init relays
 	relays_obj = dict()
@@ -345,7 +136,7 @@ def main():
 			from hashlib import sha1
 			password = cfg.core.connection.password =\
 				sha1(open('/dev/urandom', 'rb').read(120/8)).hexdigest()
-		factory = BCServerFactory(
+		factory = irc.BCServerFactory(
 			cfg.core.connection.server,
 			*(chan.get('name', name) for name,chan in channels.viewitems()),
 			**{cfg.core.connection.nickname: password} )
@@ -356,7 +147,7 @@ def main():
 	# Client
 	endpoints\
 		.clientFromString(reactor, cfg.core.connection.endpoint)\
-		.connect(BCClientFactory(cfg.core, interface))
+		.connect(irc.BCClientFactory(cfg.core, interface))
 
 	log.debug('Starting event loop')
 	reactor.run()
