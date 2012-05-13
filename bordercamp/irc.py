@@ -73,6 +73,10 @@ class BCIRCUser(IRCUser):
 	def irc_unknown(self, prefix, command, params):
 		log.info('Ignoring unhandled irc command: {!r}'.format([prefix, command, params]))
 
+	def irc_JOIN(self, prefix, params):
+		for channel in (params[0].split(',') if ',' in params[0] else [params[0]]):
+			IRCUser.irc_JOIN(self, prefix, [channel] + params[1:])
+
 
 class BCServerFactory(IRCFactory):
 
