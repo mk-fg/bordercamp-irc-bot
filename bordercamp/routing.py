@@ -5,6 +5,7 @@ import itertools as it, operator as op, functools as ft
 import os, sys
 
 from twisted.internet import reactor, protocol, defer
+from twisted.words.protocols import irc
 from twisted.python import log
 
 
@@ -21,7 +22,7 @@ class BCInterface(object):
 
 	def update(self, relays, channels, routes):
 
-		def resolve(route, k, fork, lvl=0):
+		def resolve(route, k, fork=False, lvl=0):
 			# print(lvl, route.name, k, fork)
 			if k not in route: route[k] = list()
 			elif isinstance(route[k], str): route[k] = [route[k]]
