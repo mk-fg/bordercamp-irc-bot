@@ -1,6 +1,7 @@
 ### Default (baseline) configuration parameters.
 ### DO NOT ever change this config, use -c commandline option instead!
 
+
 modules:
 
   _default: # used as a base for all other sections here
@@ -35,11 +36,6 @@ modules:
 
   # logtail:
   #   monitor: '/var/log/{messages,*.log}' # glob pattern or a list of them
-  #   xattr_name: user.bordercamp.logtail.pos # used to mark "last position" in logs b/w restarts
-  #   # processing_delay (float, seconds) allows some time for new log creator
-  #   #  (e.g. syslogd, logrotate) to fill/chmod file and processes all the new lines
-  #   #  in one batch, thus minizing the number of stat()/open() calls.
-  #   processing_delay: 1.0
 
   # pipe_syslog_clean:
   #   name: pipe_sub
@@ -48,7 +44,6 @@ modules:
   # pipe_syslog_resolve:
   #   name: pipe_resolve
   #   addr: '^[\w.]+ .*?\[(\d+|-)\]@(?P<addr>\S+): '
-  #   short: true # return only first part of the hostname
 
   # bordercamp: # not '#bordercamp' only because it'd have to be quoted every time ;)
   #   type: channel
@@ -63,6 +58,36 @@ modules:
   #   src: logtail
   #   dst: bordercamp
   #   pipe: [pipe_syslog_clean, pipe_syslog_resolve]
+
+
+relay_defaults:
+  # Default settings for relay modules (by entry_point name) and their instances.
+  # Can be overidden on per-instance basis.
+
+  logtail:
+    # Tails logfiles matching specified glob pattern.
+    # If directory is matched on startup, all files in it will be monitored.
+    monitor: # glob pattern or a list of them, example: '/var/log/{messages,*.log}'
+    xattr_name: user.bordercamp.logtail.pos # used to mark "last position" in logs b/w restarts
+    # processing_delay (float, seconds) allows some time for new log creator
+    #  (e.g. syslogd, logrotate) to fill/chmod file and processes all the new lines
+    #  in one batch, thus minizing the number of stat()/open() calls.
+    processing_delay: 1.0
+
+  pipe_sub:
+    # Regexp replacements, using python re module.
+    # http://docs.python.org/library/re.html#regular-expression-syntax
+    # http://docs.python.org/library/re.html#re.sub
+    src: # pattern, matched against the message (passed to re.sub())
+    dst: # replacement pattern (passed to re.sub())
+
+  pipe_resolve:
+    # Resolves part of the message, matched by regexp to/from IP/hostname.
+    # Uses canonical name from gethostbyaddr
+    #  and first address returned by gethostbyname_ex.
+    # Non-matched or unresolvable entries will be passed unchanged.
+    addr: # regexp with "addr" or "host" groups, but not both
+    short: true # use only first part of the hostnames
 
 
 core:
