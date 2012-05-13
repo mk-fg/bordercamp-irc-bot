@@ -43,17 +43,19 @@ class BCInterface(object):
 							routes[route.name].append(fork)
 			route[k] = modules
 
-		for name, route in routes.viewitems(): routes[name] = [route]
+		for name, route in routes.viewitems():
+			if not route.get('pipe'): route.pipe = list()
+			route.name = name
+			routes[name] = [route]
 		for k, fork in ('pipe', None), ('src', True), ('dst', False):
 			for name, route_set in routes.items():
 				for route in route_set:
 					if k == 'pipe':
-						for v in route.pipe:
+						for v in route.pipe or list():
 							if v in channels:
 								log.fatal( 'Channels are not allowed'
 									' in route.pipe sections (route: {}, channel: {})'.format(name, v) )
 								sys.exit(1)
-					route.name = name
 					resolve(route, k, fork=fork)
 
 		pipes, pipes_chk = dict(), set()
