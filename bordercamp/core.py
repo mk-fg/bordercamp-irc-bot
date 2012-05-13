@@ -82,9 +82,11 @@ def main():
 	## Actual init
 	# Merge entry points configuration with CLI opts
 	conf = config.ep_config( cfg,
-		[dict( ep='modules',
-			enabled=optz.relay_enable, disabled=optz.relay_disable )] )
-	conf_base, conf = conf['modules']
+		[ dict(ep='relay_defaults'),
+			dict( ep='modules',
+				enabled=optz.relay_enable, disabled=optz.relay_disable ) ] )
+	(conf_base, conf), (conf_def_base, conf_def) =\
+		op.itemgetter('modules', 'relay_defaults')(conf)
 	for subconf in conf.viewvalues(): subconf.rebase(conf_base)
 	relays, channels, routes = (
 		dict( (name, subconf) for name,subconf in conf.viewitems()
@@ -108,9 +110,11 @@ def main():
 		for name, subconf in ep_relays:
 			if subconf.get('enabled', True):
 				log.debug('Loading relay: {} ({})'.format(name, ep.name))
-				try: relay_defaults = cfg.relay_defaults[ep.name]
+				try: relay_defaults = conf_def[ep.name]
 				except KeyError: pass
-				else: subconf.rebase(relay_defaults)
+				else:
+					subconf.rebase(relay_defaults)
+					subconf.rebase(conf_def_base)
 				try:
 					obj = ep.load().relay(subconf, interface=interface)
 					if not obj: raise AssertionError('Empty object')

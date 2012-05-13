@@ -5,7 +5,6 @@
 modules:
 
   _default: # used as a base for all other sections here
-    enabled: true
     type: relay # for most of them anyway
     # debug: # auto-filled from global "debug" section, if not specified
 
@@ -63,6 +62,9 @@ modules:
 relay_defaults:
   # Default settings for relay modules (by entry_point name) and their instances.
   # Can be overidden on per-instance basis.
+
+  _default: # used as a base for all other sections here
+    enabled: true
 
   logtail:
     # Tails logfiles matching specified glob pattern.
