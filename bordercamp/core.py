@@ -151,10 +151,10 @@ def main():
 			.serverFromString(reactor, cfg.core.connection.server.endpoint)\
 			.listen(factory)
 
-	# Client
-	endpoints\
-		.clientFromString(reactor, cfg.core.connection.endpoint)\
-		.connect(irc.BCClientFactory(cfg.core, interface))
+	# Client with proper endpoints + reconnection
+	# See: http://twistedmatrix.com/trac/ticket/4472 + 4700 + 4735
+	ep = endpoints.clientFromString(reactor, cfg.core.connection.endpoint)
+	irc.BCClientFactory(cfg.core, interface, ep).connect()
 
 	log.debug('Starting event loop')
 	reactor.run()

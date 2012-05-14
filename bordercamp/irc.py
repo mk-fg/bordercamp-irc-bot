@@ -63,9 +63,18 @@ class BCClientFactory(protocol.ReconnectingClientFactory):
 
 	protocol = property(lambda s: ft.partial(BCBot, s.conf, s.interface))
 
-	def __init__(self, conf, interface):
-		self.conf, self.interface = conf, interface
+	def __init__(self, conf, interface, ep):
+		self.conf, self.interface, self.ep = conf, interface, ep
 		for k,v in self.conf.connection.reconnect.viewitems(): setattr(self, k, v)
+
+	def connect(self):
+		self.ep.connect(self)
+
+	def doStop(self):
+		protocol.ReconnectingClientFactory.doStop(self)
+		if self.continueTrying:
+			self.connector = self
+			self.retry()
 
 
 class BCIRCUser(IRCUser):
