@@ -165,33 +165,43 @@ class Logtail(BCRelay):
 				pos = None
 
 		## Actual processing
-		line = self.paths_buff.setdefault(path_real, '')
+		buff_agg = self.paths_buff.setdefault(path_real, '')
 		with path_real.open() as src:
 			if pos:
 				src.seek(pos)
 				pos = None
 			while True:
-				buff, pos = src.readline(), src.tell()
+				pos = src.tell()
+				try: buff, pos = self.read(src), src.tell()
+				except StopIteration:
+					buff_agg = ''
+					src.seek(pos) # revert back to starting position
+					buff, pos = self.read(src), src.tell()
 				if not buff: # eof, try to mark the position
-					if not line: # clean eof at the end of the line - mark it
-						pos = self.file_end_mark(path_real, pos=pos, data=line)
+					if not buff_agg: # clean eof at the end of the chunk - mark it
+						pos = self.file_end_mark(path_real, pos=pos, data=buff_agg)
 						self.paths_pos[path_real] = pos
 						xattr(path_real.path)[self.conf.xattr_name] = pickle.dumps(pos)
 						log.noise( 'Updated xattr ({}) for path {} to: {!r}'\
 							.format(self.conf.xattr_name, path_real, pos) )
 					break
-				line += buff
-				if line.endswith('\n'):
-					log.noise('New line (source: {}): {!r}'.format(path, line))
-					reactor.callLater(0, self.handle_line, line)
-					line = self.paths_buff[path_real] = ''
-				else:
-					line, self.paths_buff[path_real] = None, line
-					break
+				buff_agg = self.paths_buff[path_real] = self.process(buff_agg + buff)
 
+	def read(self, src):
+		'Read however much is necessary for process() method'
+		return src.readline()
+
+	def process(self, buff):
+		'Process buffered/read data, returning leftover buffer'
+		if buff.endswith('\n'):
+			self.handle_line(buff.strip())
+			return ''
+		else:
+			return buff
 
 	def handle_line(self, line):
-		self.interface.dispatch(line.strip(), source=self)
+		log.noise('New line (source: {}): {!r}'.format(path, line))
+		reactor.callLater(0, self.interface.dispatch, line, source=self)
 
 
 relay = Logtail
