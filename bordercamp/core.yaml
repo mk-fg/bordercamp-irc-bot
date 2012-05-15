@@ -91,6 +91,37 @@ relay_defaults:
     addr: # regexp with "addr" or "host" groups, but not both
     short: true # use only first part of the hostnames
 
+  pipe_exherbo_pkgmon:
+    # I use it to monitor #exherbo traffic to pick up patches
+    #  and commits for packages which are in my repository (fg_exheres).
+    seek:
+      # Patterns, used to acquire the package name.
+      # Can either have a "name" group directly,
+      #  or "patch" with an URL of a diff to download and process.
+      - '(^|\s+)!pq\s+(?P<patch>\S+)(\s+::\S+|$)'
+      - '^\[[\d:]+\] <CIA-\d+> .*\bpackages/[\w\-]+/(?P<name>[\w\-]+)/.*( - (?P<patch>https?://\S+)$)?'
+    check_path:
+      # Glob the given path pattern, emitting a specified line if it exists.
+      path: '/var/cache/bordercamp/fg_exheres/packages/*/{name}'
+      line: '#exherbo pkg update ({name}): {msg}'
+
+  pipe_snort_nflog:
+    # Process Snort IDS log lines, collecting traffic dumps for matched events.
+    # Dumps are acquired via zmq from nflog-pcap-recv daemon,
+    #   part of nflog-zmq-pcap-pipe thing I use to shuttle traffic to snort:
+    #  https://github.com/mk-fg/nflog-zmq-pcap-pipe
+    sig_match: ':\s+\[\(?P<sig>d+:\d+:\d+)\] ' # pattern to match signature ("sig" group)
+    traffic_dump:
+      # All conditions here are applied on "any" basis.
+      path: '/srv/traffic/dump.{ts}' # path to generated dump
+      signatures: # list of signatures to generate dumps for, example: [139:1:1, 138:5:1]
+      match: # list of regexp conditions to match against message
+        # - '\[Classification: Attempted User Privilege Gain\]'
+      nflog_pipe_interface:
+        socket: # zmq socket name, example: ipc:///tmp/bif.sock
+        timeout: 2.0 # recv/send timeout, to prevent from jamming twisted for too long
+    # rate_limit: TODO
+
 
 core:
 
