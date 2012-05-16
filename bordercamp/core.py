@@ -96,12 +96,31 @@ def main():
 	# Init interface
 	interface = routing.BCInterface(dry_run=cfg.debug.dry_run)
 
+	# Find out which relay entry_points are actually used
+	route_mods = set(it.chain.from_iterable(
+		it.chain.from_iterable(
+			(mod if isinstance(mod, list) else [mod])
+			for mod in ((route.get(k) or list()) for k in ['src', 'dst', 'pipe']) )
+		for route in routes.viewvalues() ))
+	for name in route_mods:
+		try:
+			name_ep = relays[name].name
+			if name == name_ep: continue
+		except KeyError: pass
+		else:
+			route_mods.add(name_ep)
+			route_mods.remove(name)
+
 	# Init relays
 	relays_obj = dict()
 	for ep in pkg_resources.iter_entry_points('bordercamp.relays'):
 		if ep.name[0] == '_':
 			log.debug( 'Skipping entry_point with name'
 				' prefixed by underscore: {}'.format(ep.name) )
+			continue
+		if ep.name not in route_mods:
+			log.debug(( 'Skipping loading relay entry_point {}'
+				' because its not used in any of the routes' ).format(ep.name))
 			continue
 		ep_relays = list( (name, subconf)
 			for name, subconf in relays.viewitems()
