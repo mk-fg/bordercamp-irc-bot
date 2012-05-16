@@ -23,7 +23,6 @@ class BCInterface(object):
 	def update(self, relays, channels, routes):
 
 		def resolve(route, k, fork=False, lvl=0):
-			# print(lvl, route.name, k, fork)
 			if k not in route: route[k] = list()
 			elif isinstance(route[k], str): route[k] = [route[k]]
 			modules = list()
@@ -76,7 +75,18 @@ class BCInterface(object):
 		# Add reverse (obj -> name) mapping to relays
 		for name, relay_obj in relays.items(): relays[relay_obj] = name
 
-		self.relays, self.channels, self.routes = relays, channels, pipes
+		self.relays, self.channels, self.routes = relays.copy(), channels.copy(), pipes
+
+		# Remove channels that aren't used in any of the routes
+		channels = set()
+		for src, routes in self.routes.viewitems():
+			channels.add(src)
+			for dst, pipe in routes: channels.add(dst)
+		for channel in list(self.channels):
+			if channel not in channels:
+				log.debug('Ignoring channel, not used in any of the routes: {}'.format(channel))
+				del self.channels[channel]
+
 
 	def proto_on(self, irc):
 		self.proto = irc
