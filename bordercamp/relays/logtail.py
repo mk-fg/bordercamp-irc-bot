@@ -200,7 +200,7 @@ class Logtail(BCRelay):
 			return buff
 
 	def handle_line(self, line):
-		log.noise('New line (source: {}): {!r}'.format(path, line))
+		log.noise('New line: {!r}'.format(line))
 		reactor.callLater(0, self.interface.dispatch, line, source=self)
 
 
