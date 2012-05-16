@@ -6,6 +6,8 @@ from contextlib import closing
 from time import time
 import os, re, zmq
 
+from twisted.python import log
+
 from . import BCRelay
 
 
@@ -47,7 +49,7 @@ class SnortLog(BCRelay):
 				if re.search(regex, msg):
 					dump = True
 					break
-		if dump: msg = [msg, '  dump: {}'.format(self.traffic_dump())]
+		if dump: msg = msg + '\n  dump: {}'.format(self.traffic_dump())
 
 		return msg
 

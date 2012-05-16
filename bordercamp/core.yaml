@@ -110,7 +110,7 @@ relay_defaults:
     # Dumps are acquired via zmq from nflog-pcap-recv daemon,
     #   part of nflog-zmq-pcap-pipe thing I use to shuttle traffic to snort:
     #  https://github.com/mk-fg/nflog-zmq-pcap-pipe
-    sig_match: ':\s+\[\(?P<sig>d+:\d+:\d+)\] ' # pattern to match signature ("sig" group)
+    sig_match: ':\s+\[(?P<sig>\d+:\d+:\d+)\]\s' # pattern to match signature ("sig" group)
     traffic_dump:
       # All conditions here are applied on "any" basis.
       path: '/srv/traffic/dump.{ts}' # path to generated dump
