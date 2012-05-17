@@ -49,7 +49,11 @@ class SnortLog(BCRelay):
 				if re.search(regex, msg):
 					dump = True
 					break
-		if dump: msg = msg + '\n  dump: {}'.format(self.traffic_dump())
+		if dump:
+			try: dump = self.traffic_dump()
+			except Exception as err:
+				msg += '\n  dump failed: {}'.format(err)
+			else: msg += '\n  dump: {}'.format(dump)
 
 		return msg
 
