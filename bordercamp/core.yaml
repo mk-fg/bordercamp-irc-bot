@@ -120,7 +120,6 @@ relay_defaults:
       nflog_pipe_interface:
         socket: # zmq socket name, example: ipc:///tmp/bif.sock
         timeout: 2.0 # recv/send timeout, to prevent from jamming twisted for too long
-    # rate_limit: TODO
 
 
 core:
@@ -152,7 +151,9 @@ core:
 
     heartbeat: 60 # interval b/w pings to own hostname
 
+  encoding: utf-8
   nickname_lstrip: '*?@~&%+' # various owner/mode prefixes
+  channel_prefix: '#~&' # used to distinguish channel and nickname
 
   # Emulate xattr module interface with simple k-v db for modules that use it
   # Can be useful if xattr manipulation is limited by permissions (e.g. read-only) or fs capabilities
@@ -169,7 +170,7 @@ logging: # see http://docs.python.org/library/logging.config.html
   version: 1
   formatters:
     basic:
-      format: '%(asctime)s :: %(levelname)s :: %(name)s: %(message)s'
+      format: '%(asctime)s :: %(levelname)s: %(message)s'
       datefmt: '%Y-%m-%d %H:%M:%S'
   handlers:
     console:

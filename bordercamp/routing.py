@@ -2,7 +2,7 @@
 from __future__ import print_function
 
 import itertools as it, operator as op, functools as ft
-import os, sys
+import os, sys, inspect
 
 from twisted.internet import reactor, protocol, defer
 from twisted.words.protocols import irc
@@ -14,11 +14,10 @@ class BCInterface(object):
 		and transient protocol objects, queueing/multiplexing messages from
 		relays to the protocols and messages/events from protocols to relays.'''
 
-	irc_enc = 'utf-8'
 	proto = None
 
-	def __init__(self, dry_run=False):
-		self.dry_run = dry_run
+	def __init__(self, irc_enc='utf-8', chan_prefix='#', dry_run=False):
+		self.irc_enc, self.chan_prefix, self.dry_run = irc_enc, chan_prefix, dry_run
 
 	def update(self, relays, channels, routes):
 
@@ -78,7 +77,7 @@ class BCInterface(object):
 		self.relays, self.channels, self.routes = relays.copy(), channels.copy(), pipes
 
 		# Remove channels that aren't used in any of the routes
-		channels = set()
+		self.channel_map, channels = dict(), set()
 		for src, routes in self.routes.viewitems():
 			channels.add(src)
 			for dst, pipe in routes: channels.add(dst)
@@ -86,49 +85,77 @@ class BCInterface(object):
 			if channel not in channels:
 				log.debug('Ignoring channel, not used in any of the routes: {}'.format(channel))
 				del self.channels[channel]
+			else:
+				alias, channel = channel, self.channels[channel]
+				name = channel.get('name') or alias
+				self.channel_map[name] = alias
 
 
 	def proto_on(self, irc):
 		self.proto = irc
 		for alias, channel in self.channels.viewitems():
-			log.debug('Joining channel: {}'.format(channel.name))
-			self.proto.join(channel.name)
+			channel = channel.get('name') or alias
+			if channel[0] not in self.chan_prefix:
+				log.debug( 'Not joining channel'
+					' w/o channel-specific prefiix: {}'.format(channel) )
+				continue
+			log.debug('Joining channel: {}'.format(channel))
+			self.proto.join(channel)
 	def proto_off(self, irc): self.proto = None
 
-	def proto_msg(self, irc, user, nick, channel, message): pass
+	def proto_msg(self, irc, user, nick, channel, msg):
+		if channel not in self.channel_map:
+			log.noise( 'Ignoring msg for unmonitored source'
+				' (user: {!r}, nick: {!r}, channel: {!r})'.format(user, nick, channel) )
+			return
+		self.dispatch(msg, source=self.channel_map[channel], user=nick)
+
+
 
 
 	@defer.inlineCallbacks
-	def dispatch(self, msg, source):
+	def dispatch(self, msg, source, user=None, direct=False):
 		if not isinstance(msg, list): msg = [msg]
 
-		# Pull msg through all the pipelines and build dst channels / msgs buffer
 		channels = dict()
-		for dst, pipe in self.routes[self.relays[source]]:
-			msg_copy = list(msg)
-			for name in pipe:
-				relay = self.relays[name]
-				results = yield defer.DeferredList(list(
-					defer.maybeDeferred(relay.dispatch, part) for part in msg_copy ))
-				msg_copy = set()
-				for chk, result in results:
-					if not chk:
-						log.error(
-							'Detected pipeline failure (src: {}, dst: {}, pipe: {}, relay: {}, msg: {}): {}'\
-							.format(source, dst, pipe, name, msg_copy, result) )
-					elif isinstance(result, list): msg_copy.update(result)
-					else: msg_copy.add(result)
-				msg_copy = msg_copy.difference({None})
-				if not msg_copy: break
-			else:
-				if dst in self.relays:
-					yield defer.DeferredList(list(
-						defer.maybeDeferred(dst.dispatch, msg) for msg_copy in msg_copy ))
-				else:
-					channels.setdefault(self.channels[dst].name, set()).update(msg_copy)
+		if direct and user:
+			# Direct reply
+			log.noise('Dispatching msg from {!r} directly to user: {!r}'.format(source, user))
+			channels[user] = msg
 
-		# Check whether anything can be delivered at all
-		if not self.proto: # TODO: queue
+		else:
+			# Pull msg through all the pipelines and build dst channels / msgs buffer
+			for dst, pipe in self.routes[self.relays.get(source) or source]:
+				msg_copy = list(msg)
+				for name in pipe:
+					relay = self.relays[name]
+					results = yield defer.DeferredList(list(
+						defer.maybeDeferred(relay.dispatch, part) for part in msg_copy ))
+					msg_copy = set()
+					for chk, result in results:
+						if not chk:
+							log.error(
+								'Detected pipeline failure (src: {}, dst: {}, pipe: {}, relay: {}, msg: {}): {}'\
+								.format(source, dst, pipe, name, msg_copy, result) )
+						elif isinstance(result, list): msg_copy.update(result)
+						else: msg_copy.add(result)
+					msg_copy = msg_copy.difference({None})
+					if not msg_copy: break
+				else:
+					if dst in self.relays:
+						extra_kwz = dict()
+						if isinstance(dst, str): dst = self.relays[dst]
+						if user and 'source' in inspect.getargspec(dst.dispatch).args:
+							extra_kwz['source'] = user
+						log.noise('Delivering msgs to dst relay: {}, extra_kwz: {}'.format(dst, extra_kwz))
+						yield defer.DeferredList(list(
+							defer.maybeDeferred(dst.dispatch, msg_copy, **extra_kwz)
+							for msg_copy in msg_copy ))
+					else:
+						channels.setdefault(self.channels[dst].name, set()).update(msg_copy)
+
+		# Check whether anything can be delivered to channels at all
+		if not self.proto:
 			log.warn( 'Failed to deliver message(s)'
 				' ({!r}) to the following channels: {}'.format(msg, channels) )
 			defer.returnValue(None)

@@ -70,7 +70,7 @@ def main():
 		xattr_db = shelve.open(cfg.core.xattr_emulation, 'c')
 		class xattr_path(object):
 			def __init__(self, base):
-				assert isinstance(base, bytes)
+				assert isinstance(base, str)
 				self.base = base
 			def key(self, k): return '{}\0{}'.format(self.base, k)
 			def __setitem__(self, k, v): xattr_db[self.key(k)] = v
@@ -94,7 +94,8 @@ def main():
 		for subtype in ['relay', 'channel', 'route'] )
 
 	# Init interface
-	interface = routing.BCInterface(dry_run=cfg.debug.dry_run)
+	interface = routing.BCInterface( irc_enc=cfg.core.encoding,
+		chan_prefix=cfg.core.channel_prefix, dry_run=cfg.debug.dry_run )
 
 	# Find out which relay entry_points are actually used
 	route_mods = set(it.chain.from_iterable(
