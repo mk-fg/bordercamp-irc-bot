@@ -121,6 +121,24 @@ relay_defaults:
         socket: # zmq socket name, example: ipc:///tmp/bif.sock
         timeout: 2.0 # recv/send timeout, to prevent from jamming twisted for too long
 
+  debug_dumper:
+    # Relay that dumps recent messages sent to logging module upon request.
+    # Useful only to debug the bot itself.
+    # format/datefmt keys are passed to logging.Formatter.
+    # Note that handler is attached to root logger, so levels
+    #  for "root" and "twisted" loggers should be set accordingly.
+    # See http://docs.python.org/library/logging.html
+    command: logdump # command to respond to
+    direct: true # try to respond directly to sender (if msg is received directly from irc channel)
+    level: 0 # int or name, 0 - catch all messages
+    capacity: 100 # number of latest messages to keep
+    format: '%(asctime)s :: %(levelname)s: %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+    # Signal number or name to dump last
+    #  debug lines to a general log (with CRITICAL severity).
+    # Can be useful if bot disconnects or becomes unresponsive.
+    signal: 'USR1'
+
 
 core:
 
@@ -184,9 +202,9 @@ logging: # see http://docs.python.org/library/logging.config.html
     #   formatter: basic
     #   encoding: utf-8
     #   level: DEBUG
-  # loggers:
-  #   bordercamp.relays.logtail:
-  #     level: ERROR
+  loggers:
+    twisted:
+      handlers: [console]
+      level: 0
   root:
-    handlers: [console]
-    level: custom
+    level: 0
