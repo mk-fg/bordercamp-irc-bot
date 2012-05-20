@@ -121,6 +121,17 @@ relay_defaults:
         socket: # zmq socket name, example: ipc:///tmp/bif.sock
         timeout: 2.0 # recv/send timeout, to prevent from jamming twisted for too long
 
+  pipe_nflog_snapshots:
+    # Test pattern against received msgs, generatng traffic dumps on match.
+    patterns: # regexp patterns to match against each received message
+      # - '\bnflog-zmq-send\b.*\bWARNING\b'
+    traffic_dump:
+      path: '/srv/traffic/dump.{ts}' # path to generated dump
+      min_interval: 30 # min interval between two dumps, seconds
+      nflog_pipe_interface:
+        socket: # zmq socket name, example: ipc:///tmp/bif.sock
+        timeout: 10.0 # recv/send timeout, to prevent from jamming twisted for too long
+
   debug_dumper:
     # Relay that dumps recent messages sent to logging module upon request.
     # Useful only to debug the bot itself.
