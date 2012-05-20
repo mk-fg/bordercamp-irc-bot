@@ -124,8 +124,12 @@ class BCInterface(object):
 			channels[user] = msg
 
 		else:
+			try: route = self.routes[self.relays.get(source) or source]
+			except KeyError:
+				log.noise('No routes to dispatch message to, dropping: {!r}'.format(msg))
+				return
 			# Pull msg through all the pipelines and build dst channels / msgs buffer
-			for dst, pipe in self.routes[self.relays.get(source) or source]:
+			for dst, pipe in route:
 				msg_copy = list(msg)
 				for name in pipe:
 					relay = self.relays[name]

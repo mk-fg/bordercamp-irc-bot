@@ -103,7 +103,7 @@ def main():
 			(mod if isinstance(mod, list) else [mod])
 			for mod in ((route.get(k) or list()) for k in ['src', 'dst', 'pipe']) )
 		for route in routes.viewvalues() ))
-	for name in route_mods:
+	for name in list(route_mods):
 		try:
 			name_ep = relays[name].name
 			if name == name_ep: continue

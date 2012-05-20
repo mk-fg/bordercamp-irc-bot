@@ -48,7 +48,7 @@ class BCBot(irc.IRCClient):
 	def privmsg(self, user, channel, message):
 		nick = user.split('!', 1)[0]
 		if self.conf.nickname_lstrip: nick = nick.lstrip(self.conf.nickname_lstrip)
-		log.debug('Got msg: {}'.format([user, nick, channel, message]))
+		log.noise('Got msg: {}'.format([user, nick, channel, message]))
 		self.interface.proto_msg(self, user, nick, channel, message)
 
 	def action(self, user, channel, message):
