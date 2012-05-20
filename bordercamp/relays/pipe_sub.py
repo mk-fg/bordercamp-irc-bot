@@ -18,7 +18,7 @@ class RegexSub(BCRelay):
 
 	def dispatch(self, msg):
 		msg_sub = self.regex.sub(self.conf.dst, msg)
-		if msg == msg_sub: log.debug('RegexSub failed, msg: {!r}'.format(msg))
+		if msg == msg_sub: log.noise('RegexSub failed, msg: {!r}'.format(msg))
 		return msg_sub
 
 
