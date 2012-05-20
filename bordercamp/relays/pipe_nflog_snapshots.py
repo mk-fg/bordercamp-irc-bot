@@ -42,15 +42,17 @@ class NFLogDump(BCRelay):
 				break
 		else: return
 
+		ts = time()
 		if self.conf.traffic_dump.min_interval\
-				and self.last_dump > time() - self.conf.traffic_dump.min_interval:
-			log.debug( 'Ignoring nflog-dump'
-				' pattern match ({}) due to rate-limiting'.format(pat) )
+				and self.last_dump > ts - self.conf.traffic_dump.min_interval:
+			log.debug( 'Ignoring nflog-dump pattern match'
+					' ({}) due to rate-limiting (elapsed: {:.1f}, min: {})'\
+				.format(pat, ts-self.last_dump, self.conf.traffic_dump.min_interval) )
 			return
-		self.last_dump = time()
+		self.last_dump = ts
 
 		msg = 'Matched nflog-dump pattern: {}'.format(pat)
-		try: dump = self.traffic_dump(ts=self.last_dump)
+		try: dump = self.traffic_dump(ts=ts)
 		except Exception as err:
 			msg += '\n  dump failed: {}'.format(err)
 		else: msg += '\n  dump: {}'.format(dump)
