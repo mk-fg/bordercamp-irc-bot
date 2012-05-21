@@ -23,7 +23,7 @@ class Resolver(BCRelay):
 			return msg
 		for sub, func in [
 				('addr', lambda addr: socket.gethostbyaddr(addr)[0]),
-				('host', lambda host: socket.gethostbyname_ex(host)[3][0]) ]:
+				('host', lambda host: socket.gethostbyname_ex(host)[2][0]) ]:
 			try: group = match.group(sub)
 			except IndexError: continue
 			try: group = func(group)
