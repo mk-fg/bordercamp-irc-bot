@@ -18,8 +18,11 @@ class FilterPipe(BCRelay):
 		self.rules = OrderedDict()
 		for name,rule in self.conf.rules.viewitems():
 			log.noise('Compiling filter (name: {}): {!r}'.format(name, rule.regex))
-			action, optz = rule.action.split('-', 1)
-			if action == 'limit': optz = map(int, optz.split('/'))
+			try: action, optz = rule.action.split('-', 1)
+			except ValueError: action, optz = rule.action, list()
+			else:
+				if action == 'limit': optz = map(int, optz.split('/'))
+				else: optz = [optz]
 			self.rules[name] = re.compile(rule.regex), action, optz
 		self.rule_hits, self.rule_notes, self.rule_drops = dict(), set(), defaultdict(int)
 
