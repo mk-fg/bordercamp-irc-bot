@@ -165,7 +165,7 @@ class Logtail(BCRelay):
 		if pos:
 			pos, size, data_hash = pos
 			if self.file_end_check(path_real, pos, size=size, data_hash=data_hash):
-				log.debug(( 'Event (mask: {}) for unchanged'
+				log.noise(( 'Event (mask: {}) for unchanged'
 					' path, ignoring: {}' ).format(mask_str, path))
 				return
 			if path_real.getsize() < pos:
