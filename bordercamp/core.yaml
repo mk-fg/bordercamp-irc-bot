@@ -70,6 +70,8 @@ relay_defaults:
     # Tails logfiles matching specified glob pattern.
     # If directory is matched on startup, all files in it will be monitored.
     monitor: # glob pattern or a list of them, example: '/var/log/{messages,*.log}'
+    monitor_exclude: # regex (or list) to match against paths to ignore events for, example: 'debug.*\.log$'
+    prepend_filename: false # add source filename to message
     xattr_name: user.bordercamp.logtail.pos # used to mark "last position" in logs b/w restarts
     # processing_delay (float, seconds) allows some time for new log creator
     #  (e.g. syslogd, logrotate) to fill/chmod file and processes all the new lines

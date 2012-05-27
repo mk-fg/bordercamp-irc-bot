@@ -5,7 +5,7 @@ import itertools as it, operator as op, functools as ft
 from glob import glob
 from fnmatch import fnmatch
 from hashlib import sha1
-import os, sys, re, pickle
+import os, sys, re, pickle, types
 
 from xattr import xattr
 
@@ -42,6 +42,10 @@ class Logtail(BCRelay):
 
 	def __init__(self, *argz, **kwz):
 		super(Logtail, self).__init__(*argz, **kwz)
+
+		self.exclude = self.conf.monitor_exclude or list()
+		if isinstance(self.exclude, types.StringTypes): self.exclude = [self.exclude]
+		self.exclude = map(re.compile, self.exclude)
 
 		paths_watch = self.paths_watch = dict()
 		self.paths_pos, self.paths_buff = dict(), dict()
@@ -142,6 +146,11 @@ class Logtail(BCRelay):
 			log.noise( 'Non-matched path in one of'
 				' the watched dirs: {} (realpath: {})'.format(path, path_real) )
 			return
+		for pat in self.exclude:
+			if pat.search(path.path):
+				log.noise( 'Matched path by exclude-pattern'
+					' ({}): {} (realpath: {})'.format(pat, path, path_real) )
+				return
 
 		## Get last position
 		pos = self.paths_pos.get(path_real)
@@ -185,16 +194,19 @@ class Logtail(BCRelay):
 						log.noise( 'Updated xattr ({}) for path {} to: {!r}'\
 							.format(self.conf.xattr_name, path_real, pos) )
 					break
-				buff_agg = self.paths_buff[path_real] = self.process(buff_agg + buff)
+				buff_agg = self.paths_buff[path_real] = self.process(buff_agg + buff, path)
 
 	def read(self, src):
 		'Read however much is necessary for process() method'
 		return src.readline()
 
-	def process(self, buff):
+	def process(self, buff, path):
 		'Process buffered/read data, returning leftover buffer'
 		if buff.endswith('\n'):
-			self.handle_line(buff.strip())
+			line = buff.strip()
+			if self.conf.prepend_filename:
+				line = '{}: {}'.format(path.basename(), line)
+			self.handle_line(line)
 			return ''
 		else:
 			return buff
