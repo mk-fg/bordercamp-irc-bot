@@ -60,6 +60,9 @@ def main():
 	parser.add_argument('-n', '--dry-run', action='store_true',
 		help='Connect to IRC, but do not communicate there,'
 			' dumping lines-to-be-sent to the log instead.')
+	parser.add_argument('--fatal-errors', action='store_true',
+		help='Do not try to ignore entry_point'
+			' init errors, bailing out with traceback instead.')
 	parser.add_argument('--debug',
 		action='store_true', help='Verbose operation mode.')
 	parser.add_argument('--noise',
@@ -165,6 +168,7 @@ def main():
 					obj = ep.load().relay(subconf, interface=interface)
 					if not obj: raise AssertionError('Empty object')
 				except Exception as err:
+					if optz.fatal_errors: raise
 					log.error('Failed to load/init relay {}: {}'.format(ep.name, err))
 					obj, subconf.enabled = None, False
 			if obj and subconf.get('enabled', True): relays_obj[name] = obj
