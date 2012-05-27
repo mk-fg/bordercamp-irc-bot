@@ -8,7 +8,33 @@ import os, sys, pkg_resources
 from twisted.internet import reactor, endpoints, protocol, defer
 from twisted.python import log
 
-from bordercamp import config, irc, routing
+import lya
+
+from bordercamp import irc, routing
+
+
+def ep_config(cfg, ep_specs):
+	# ep_specs = [{ ep='relays',
+	#  enabled=[ep_name, ...], disabled=[ep_name, ...] }, ...]
+	ep_conf = dict()
+	for spec in ep_specs:
+		ep = spec['ep']
+		conf = cfg[ep]
+		conf_base = conf.pop('_default')
+		enabled = spec.get('enabled', list())
+		if enabled:
+			for name, subconf in conf.viewitems():
+				if name not in enabled: subconf['enabled'] = False
+			for name in enabled:
+				if name not in conf: conf[name] = dict()
+				conf[name]['enabled'] = True
+		disabled = spec.get('disabled', list())
+		for name in disabled:
+			if name not in conf: conf[name] = dict()
+			conf[name]['enabled'] = False
+		if 'debug' not in conf_base: conf_base['debug'] = cfg.debug
+		ep_conf[ep] = conf_base, conf
+	return ep_conf
 
 
 def main():
@@ -41,7 +67,7 @@ def main():
 	optz = parser.parse_args()
 
 	## Read configuration files
-	cfg = config.AttrDict.from_yaml('{}.yaml'.format(
+	cfg = lya.AttrDict.from_yaml('{}.yaml'.format(
 		os.path.splitext(os.path.realpath(__file__))[0] ))
 	for k in optz.config: cfg.update_yaml(k)
 
@@ -55,7 +81,7 @@ def main():
 	if optz.noise: lvl = logging.NOISE
 	elif optz.debug: lvl = logging.DEBUG
 	else: lvl = logging.WARNING
-	config.configure_logging(cfg.logging, lvl)
+	lya.configure_logging(cfg.logging, lvl)
 	log.PythonLoggingObserver().start()
 
 	for lvl in 'noise', 'debug', 'info', ('warning', 'warn'), 'error', ('critical', 'fatal'):
@@ -81,7 +107,7 @@ def main():
 
 	## Actual init
 	# Merge entry points configuration with CLI opts
-	conf = config.ep_config( cfg,
+	conf = ep_config( cfg,
 		[ dict(ep='relay_defaults'),
 			dict( ep='modules',
 				enabled=optz.relay_enable, disabled=optz.relay_disable ) ] )

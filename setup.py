@@ -11,7 +11,7 @@ pkg_root = os.path.dirname(__file__)
 setup(
 
 	name = 'bordercamp-irc-bot',
-	version = '12.5.5',
+	version = '12.5.6',
 	author = 'Mike Kazantsev',
 	author_email = 'mk.fraggod@gmail.com',
 	license = 'WTFPL',
@@ -42,7 +42,7 @@ setup(
 		'Topic :: System :: Networking :: Monitoring',
 		'Topic :: System :: Systems Administration' ],
 
-	install_requires = ['Twisted', 'PyYAML', 'setuptools'],
+	install_requires = ['Twisted', 'PyYAML', 'layered-yaml-attrdict-config'],
 	extras_require = {'xattr': ['xattr']},
 
 	packages = find_packages(),
