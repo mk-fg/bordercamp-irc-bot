@@ -102,6 +102,11 @@ relay_defaults:
       # drop_marks: # rule name, only useful for debugging
       #   regex: '--- MARK ---'
       #   action: drop # "drop" and "allow" are simple actions for setting static verdict on match
+      # drop_unless_prefix:
+      #   regex: '^important:'
+      #   # "allow"/"drop" actions have "nomatch" option,
+      #   #  which makes them activate only if pattern doesn't match.
+      #   action: drop-nomatch
       # msgs_from_self:
       #   regex: '\sbordercamp\[(\d+|-)\]@\w+:\s'
       #   action: limit-1/90 # pass messages only if *rate* is below 1/90 (msg/s)

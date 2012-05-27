@@ -28,7 +28,11 @@ class FilterPipe(BCRelay):
 
 	def dispatch(self, msg):
 		for name, (pat, action, optz) in self.rules.viewitems():
-			if not pat.search(msg): continue
+			if not pat.search(msg):
+				if 'nomatch' in optz:
+					if action == 'allow': return msg
+					elif action == 'drop': return
+				continue
 
 			if action == 'limit':
 				if name not in self.rule_hits: self.rule_hits[name] = deque()
@@ -50,8 +54,9 @@ class FilterPipe(BCRelay):
 				self.rule_notes.discard(name)
 				return msg
 
-			elif action == 'allow': return msg
-			elif action == 'drop': return
+			elif 'nomatch' not in optz:
+				if action == 'allow': return msg
+				elif action == 'drop': return
 
 		if self.conf.policy == 'allow': return msg
 
