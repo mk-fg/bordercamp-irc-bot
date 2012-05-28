@@ -42,7 +42,7 @@ setup(
 		'Topic :: System :: Networking :: Monitoring',
 		'Topic :: System :: Systems Administration' ],
 
-	install_requires = ['Twisted', 'PyYAML', 'layered-yaml-attrdict-config'],
+	install_requires = ['Twisted', 'PyYAML', 'layered-yaml-attrdict-config', 'setuptools'],
 	extras_require = {'xattr': ['xattr']},
 
 	packages = find_packages(),
