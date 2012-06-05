@@ -43,7 +43,7 @@ necessary dependencies as well:
 	% pip install -e 'git://github.com/mk-fg/bordercamp-irc-bot.git#egg=bordercamp-irc-bot'
 
 Alternatively, `./bordercamp-irc-bot` can be run right from the checkout tree,
-without any installation.
+without any installation, just run "python setup.py build" beforehand.
 
 ### Requirements
 
