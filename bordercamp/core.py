@@ -19,11 +19,9 @@ def ep_config(cfg, ep_specs):
 	ep_conf = dict()
 	for spec in ep_specs:
 		ep = spec['ep']
-		conf = cfg[ep]
+		conf = cfg.get(ep) or lya.AttrDict()
 		conf_base = conf.pop('_default')
 		enabled = spec.get('enabled', list())
-		for name, subconf in conf.viewitems():
-			if subconf is None: conf[name] = lya.AttrDict()
 		if enabled:
 			for name, subconf in conf.viewitems():
 				if name not in enabled: subconf['enabled'] = False
