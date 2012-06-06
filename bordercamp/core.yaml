@@ -141,6 +141,19 @@ relay_defaults:
         socket: # zmq socket name, example: ipc:///tmp/bif.sock
         timeout: 2.0 # recv/send timeout, to prevent from jamming twisted for too long
 
+  pipe_snort_references:
+    # Process Snort IDS log lines, appending available references to them.
+    # References are usually URLs to a particular CVE or exploit info,
+    #  and are routinely provided along with the rulesets.
+    # Two files are used - sid-msg.map with "sid || msg || ref_type,ref || ..." format,
+    #  and reference.config, with lines like "config reference: url http://".
+    sid_match: ':\s+\[\d+:(?P<sid>\d+):\d+\]\s' # pattern to match sid ("sid" group)
+    paths:
+      sid_src: /etc/snort/sid-msg.map
+      sid_db: /var/cache/bordercamp/sid-msg.db # dbm of id-sources from sid-msg.map
+      refs: /etc/snort/reference.config # empty - disable resolving of ref urls
+    sid_db_mtime_check_interval: 1800 # interval b/w sid_src/refs vs sid_db mtime checks
+
   pipe_nflog_snapshots:
     # Test pattern against received msgs, generatng traffic dumps on match.
     patterns: # regexp patterns to match against each received message
