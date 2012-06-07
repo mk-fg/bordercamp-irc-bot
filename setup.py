@@ -8,6 +8,10 @@ from setuptools import setup, find_packages
 
 pkg_root = os.path.dirname(__file__)
 
+# Error-handling here is to allow package to be built w/o README included
+try: readme = open(os.path.join(pkg_root, 'README.md')).read()
+except IOError: readme = ''
+
 setup(
 
 	name = 'bordercamp-irc-bot',
@@ -19,7 +23,7 @@ setup(
 	url = 'http://github.com/mk-fg/bordercamp-irc-bot',
 
 	description = 'IRC notification bot',
-	long_description = open(os.path.join(pkg_root, 'README.md')).read(),
+	long_description = readme,
 
 	classifiers = [
 		'Development Status :: 4 - Beta',
