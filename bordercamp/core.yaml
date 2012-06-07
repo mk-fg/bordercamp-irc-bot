@@ -147,7 +147,8 @@ relay_defaults:
     #  and are routinely provided along with the rulesets.
     # Two files are used - sid-msg.map with "sid || msg || ref_type,ref || ..." format,
     #  and reference.config, with lines like "config reference: url http://".
-    sid_match: ':\s+\[\d+:(?P<sid>\d+):\d+\]\s' # pattern to match sid ("sid" group)
+    sig_match: ':\s+\[(?P<gid>\d+):(?P<sid>\d+):\d+\]\s' # pattern to match sid and gid (optional)
+    gid_ignore: # list of generator ids to skip lookups for, example: [120, 129, 141]
     paths:
       sid_src: /etc/snort/sid-msg.map
       sid_db: /var/cache/bordercamp/sid-msg.db # dbm of id-sources from sid-msg.map

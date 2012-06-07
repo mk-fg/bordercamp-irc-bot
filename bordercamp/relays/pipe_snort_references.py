@@ -15,9 +15,12 @@ class SnortRefs(BCRelay):
 
 	def __init__(self, *argz, **kwz):
 		super(SnortRefs, self).__init__(*argz, **kwz)
-		log.noise('Compiling regex: {!r}'.format(self.conf.sid_match))
-		self.regex = re.compile(self.conf.sid_match)
-		self._sid_db_ts = 0
+		log.noise('Compiling regex: {!r}'.format(self.conf.sig_match))
+		self.regex = re.compile(self.conf.sig_match)
+		self.gid_ignore = set(it.imap(str, ( [self.conf.gid_ignore]
+				if isinstance(self.conf.gid_ignore, (int, str)) else self.conf.gid_ignore )))\
+			if self.conf.gid_ignore else set()
+		self.sid_db_ts = 0
 
 
 	def update_sid_db( self,
@@ -74,16 +77,22 @@ class SnortRefs(BCRelay):
 			return msg
 		sid = match.group('sid')
 
+		if self.gid_ignore:
+			try: gid = match.group('gid')
+			except IndexError: pass
+			else:
+				if gid in self.gid_ignore: return msg
+
 		ts = time()
-		if self._sid_db_ts < ts - self.conf.sid_db_mtime_check_interval:
+		if self.sid_db_ts < ts - self.conf.sid_db_mtime_check_interval:
 			if not os.path.exists(self.conf.paths.sid_db)\
 					or max(0, *( os.stat(p).st_mtime
 						for p in [self.conf.paths.sid_src, self.conf.paths.refs]
 						if os.path.exists(p) )) > os.stat(self.conf.paths.sid_db).st_mtime:
-				self.update_sid_db()
-			self._sid_db = anydbm.open(self.conf.paths.sid_db)
+				self.updatesid_db()
+			self.sid_db = anydbm.open(self.conf.paths.sid_db)
 
-		try: msg += '\n  refs: {}'.format(self._sid_db[sid])
+		try: msg += '\n  refs: {}'.format(self.sid_db[sid])
 		except KeyError:
 			log.info('Failed to find refs for sid: {!r} (msg: {!r})'.format(sid, msg))
 		return msg
