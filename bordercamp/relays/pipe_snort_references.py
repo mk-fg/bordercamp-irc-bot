@@ -89,7 +89,7 @@ class SnortRefs(BCRelay):
 					or max(0, *( os.stat(p).st_mtime
 						for p in [self.conf.paths.sid_src, self.conf.paths.refs]
 						if os.path.exists(p) )) > os.stat(self.conf.paths.sid_db).st_mtime:
-				self.updatesid_db()
+				self.update_sid_db()
 			self.sid_db = anydbm.open(self.conf.paths.sid_db)
 
 		try: msg += '\n  refs: {}'.format(self.sid_db[sid])
