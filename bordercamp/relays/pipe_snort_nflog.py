@@ -43,12 +43,19 @@ class SnortLog(BCRelay):
 
 		# Check if traffic dump should be generated
 		dump = False
-		if sig in self.conf.traffic_dump.signatures: dump = True
-		if not dump:
-			for regex in self.conf.traffic_dump.match:
+		if self.conf.traffic_dump.match_exclude:
+			for regex in self.conf.traffic_dump.match_exclude:
 				if re.search(regex, msg):
-					dump = True
+					dump = None
 					break
+		if dump is not None:
+			if sig in self.conf.traffic_dump.signatures: dump = True
+			if not dump and self.conf.traffic_dump.match:
+				for regex in self.conf.traffic_dump.match:
+					if re.search(regex, msg):
+						dump = True
+						break
+
 		if dump:
 			try: dump = self.traffic_dump()
 			except Exception as err:

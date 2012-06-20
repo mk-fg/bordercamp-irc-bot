@@ -135,8 +135,17 @@ relay_defaults:
       # All conditions here are applied on "any" basis.
       path: '/srv/traffic/dump.{ts}' # path to generated dump
       signatures: # list of signatures to generate dumps for, example: [139:1:1, 138:5:1]
-      match: # list of regexp conditions to match against message
+      match:
+        # List of regexp conditions to test against message,
+        #  generating a dump on any match
         # - '\[Classification: Attempted User Privilege Gain\]'
+        # - '\[Priority: 1\]'
+        # - '\bSENSITIVE-DATA\b'
+      match_exclude:
+        # If any of these match the message,
+        #  dump will not be generated regardless of other conditions
+        # - '\bBitTorrent - Torrent File Downloaded\b'
+        # - '\burllib\b.* Suspicious User Agent\b'
       nflog_pipe_interface:
         socket: # zmq socket name, example: ipc:///tmp/bif.sock
         timeout: 2.0 # recv/send timeout, to prevent from jamming twisted for too long
