@@ -79,8 +79,31 @@ class BCClientFactory(protocol.ReconnectingClientFactory):
 
 class BCIRCUser(IRCUser):
 
+	_welcomeMessages = IRCUser._welcomeMessages + [
+		(irc.RPL_ISUPPORT, 'NETWORK=%(serviceName)s :are supported by this server') ]
+
+	_motd = None
+	@property
+	def _motdMessages(self):
+		if self._motd is None:
+			self._motd =\
+				[(irc.RPL_MOTDSTART, ":- %(serviceName)s Message of the Day - ")]\
+				+ list((irc.RPL_MOTD, ': {}'.format(line.strip())) for line in self.factory.motd)\
+				+ [(irc.RPL_ENDOFMOTD, ":End of /MOTD command.")]
+		return self._motd
+
 	def irc_unknown(self, prefix, command, params):
 		log.info('Ignoring unhandled irc command: {!r}'.format([prefix, command, params]))
+		if self.nickname:
+			self.sendMessage( irc.ERR_UNKNOWNCOMMAND,
+				':Unknown command ({!r}, parameters: {!r})'.format(command, params) )
+
+	def irc_CAP(self, prefix, params): pass # no support for caps
+	def irc_AWAY(self, prefix, params): pass # no point in these
+
+	def irc_MOTD(self, prefix, params):
+		for code, text in self._motdMessages:
+			self.sendMessage(code, text % self.factory._serverInfo)
 
 	def irc_JOIN(self, prefix, params):
 		for channel in (params[0].split(',') if ',' in params[0] else [params[0]]):
@@ -90,9 +113,11 @@ class BCIRCUser(IRCUser):
 class BCServerFactory(IRCFactory):
 
 	protocol = BCIRCUser
+	motd = list()
 
 	def __init__(self, conf, *channels, **extra_creds):
 		self.conf = conf
+
 		realm = InMemoryWordsRealm(self.conf.name)
 		passwd = (self.conf.passwd or dict()).copy()
 		passwd.update(extra_creds)
@@ -101,4 +126,6 @@ class BCServerFactory(IRCFactory):
 		for channel in channels:
 			if channel[0] == '#': channel = channel[1:]
 			realm.createGroup(unicode(channel))
+
 		IRCFactory.__init__(self, realm, realm_portal)
+		if self.conf.motd: self.motd = self.conf.motd.splitlines()

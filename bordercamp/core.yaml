@@ -210,6 +210,7 @@ core:
       # Create a private irc server on the specified endpoint, instead of just connecting there.
       endpoint: # only if enabled, example: tcp:6667:interface=localhost
       name: bordercamp # server name, mostly irrelevant
+      motd: # motd to send to all clients, can be multiline or empty
       passwd: # {user: password, ...} dict for ACLs
         # no need to create acl for a bot itself here
         # alice: secretpassword
