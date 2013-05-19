@@ -101,13 +101,28 @@ class BCIRCUser(IRCUser):
 	def irc_CAP(self, prefix, params): pass # no support for caps
 	def irc_AWAY(self, prefix, params): pass # no point in these
 
-	def irc_MOTD(self, prefix, params):
+	def irc_MOTD(self, prefix=None, params=None):
 		for code, text in self._motdMessages:
 			self.sendMessage(code, text % self.factory._serverInfo)
 
 	def irc_JOIN(self, prefix, params):
 		for channel in (params[0].split(',') if ',' in params[0] else [params[0]]):
 			IRCUser.irc_JOIN(self, prefix, [channel] + params[1:])
+
+	def irc_NICK(self, prefix, params):
+		try: nickname = params[0].decode(self.encoding)
+		except UnicodeDecodeError:
+			self.privmsg( NICKSERV, nickname,
+				'Nickname cannot be decoded. Use ASCII or {}.'.format(self.encoding.upper()) )
+			self.transport.loseConnection()
+			return
+
+		self.nickname = self.name = nickname
+		self.irc_MOTD()
+
+		if self.password is not None:
+			password, self.password = self.password, None
+			self.logInAs(nickname, password)
 
 
 class BCServerFactory(IRCFactory):
