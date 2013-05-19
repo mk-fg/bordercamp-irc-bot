@@ -3,6 +3,7 @@
 from __future__ import print_function
 
 import itertools as it, operator as op, functools as ft
+from os.path import join, dirname, isdir, exists, splitext, realpath
 import os, sys, pkg_resources
 
 from twisted.internet import reactor, endpoints, protocol, defer
@@ -10,7 +11,14 @@ from twisted.python import log
 
 import lya
 
-from bordercamp import irc, routing
+
+try: from bordercamp import irc, routing
+except ImportError:
+	# Make sure it works from a checkout
+	if isdir(join(dirname(__file__), 'bordercamp'))\
+			and exists(join(dirname(__file__), 'setup.py')):
+		sys.path.insert(0, dirname(__file__))
+	from bordercamp import irc, routing
 
 
 def ep_config(cfg, ep_specs):
@@ -70,8 +78,7 @@ def main():
 	optz = parser.parse_args()
 
 	## Read configuration files
-	cfg = lya.AttrDict.from_yaml('{}.yaml'.format(
-		os.path.splitext(os.path.realpath(__file__))[0] ))
+	cfg = lya.AttrDict.from_yaml('{}.yaml'.format(splitext(realpath(__file__))[0]))
 	for k in optz.config: cfg.update_yaml(k)
 
 	## CLI overrides

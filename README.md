@@ -42,8 +42,8 @@ Use "install --user",
 or [virtualenv](http://pypi.python.org/pypi/virtualenv) to do unprivileged
 installs into custom paths.
 
-Alternatively, `./bordercamp-irc-bot` can be run right from the checkout tree,
-without any installation, just run "python setup.py build" beforehand.
+Alternatively, `./bordercamp-irc-bot` can be run right from the checkout tree
+without any installation.
 
 ### Requirements
 
