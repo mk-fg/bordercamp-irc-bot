@@ -3,8 +3,8 @@
 from __future__ import print_function
 
 import itertools as it, operator as op, functools as ft
-from os.path import join, dirname, isdir, exists, splitext, realpath
-import os, sys, pkg_resources
+from os.path import join, basename, dirname, isdir, exists, splitext, realpath
+import os, sys, pkg_resources, glob, importlib
 
 from twisted.internet import reactor, endpoints, protocol, defer
 from twisted.python import log
@@ -19,6 +19,23 @@ except ImportError:
 			and exists(join(dirname(__file__), 'setup.py')):
 		sys.path.insert(0, dirname(__file__))
 	from bordercamp import irc, routing
+
+
+def get_relay_list():
+	from bordercamp import relays
+	base_relays = set( basename(p)[:-3] for p in
+		glob.iglob(join(dirname(relays.__file__), '[!_]*.py')) )
+	relays = dict( (ep.name, ep)
+		for ep in pkg_resources.iter_entry_points('bordercamp.relays') )
+
+	# If ran from a checkout, shipped entry_points won't be found - make sure they are
+	base_relays.difference_update(relays)
+
+	for name in base_relays:
+		mod = importlib.import_module('bordercamp.relays.{}'.format(name))
+		relays[name] = type( 'EntryPoint', (object,),
+			dict(name=name, load=lambda s,mod=mod: mod) )()
+	return relays.values()
 
 
 def ep_config(cfg, ep_specs):
@@ -150,7 +167,7 @@ def main():
 
 	# Init relays
 	relays_obj = dict()
-	for ep in pkg_resources.iter_entry_points('bordercamp.relays'):
+	for ep in get_relay_list():
 		if ep.name[0] == '_':
 			log.debug( 'Skipping entry_point with name'
 				' prefixed by underscore: {}'.format(ep.name) )
