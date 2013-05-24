@@ -119,7 +119,7 @@ relay_defaults:
       # Can either have a "name" group directly,
       #  or "patch" with an URL of a diff to download and process.
       - '(^|\s+)!pq\s+(?P<patch>\S+)(\s+::\S+|$)'
-      - '^\[[\d:]+\] <CIA-\d+> .*\bpackages/[\w\-]+/(?P<name>[\w\-]+)/.*( - (?P<patch>https?://\S+)$)?'
+      - '^\[[\d:]+\] <irker\d+> .*\bpackages/[\w\-]+/(?P<name>[\w\-]+)/.*( - (?P<patch>https?://\S+)$)?'
     check_path:
       # Glob the given path pattern, emitting a specified line if it exists.
       path: '/var/cache/bordercamp/fg_exheres/packages/*/{name}'
