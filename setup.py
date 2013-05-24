@@ -5,6 +5,7 @@ from glob import iglob
 import os, sys
 
 from setuptools import setup, find_packages
+import bordercamp
 
 pkg_root = os.path.dirname(__file__)
 
@@ -15,11 +16,11 @@ except IOError: readme = ''
 setup(
 
 	name = 'bordercamp-irc-bot',
-	version = '12.5.6',
+	version = bordercamp.__version__,
 	author = 'Mike Kazantsev',
 	author_email = 'mk.fraggod@gmail.com',
 	license = 'WTFPL',
-	keywords = 'irc notification bot chat logs',
+	keywords = ['irc', 'notification', 'bot', 'chat', 'logs'],
 	url = 'http://github.com/mk-fg/bordercamp-irc-bot',
 
 	description = 'IRC notification bot',
