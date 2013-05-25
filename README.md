@@ -51,6 +51,7 @@ without any installation.
 * [layered-yaml-attrdict-config](https://github.com/mk-fg/layered-yaml-attrdict-config)
 * [Twisted](http://twistedmatrix.com/) (core, words)
 * (optional) [xattr](https://pypi.python.org/pypi/xattr/) for reliable log-position tracking
+* (optional) More deps for some less-relevant module options (if used), listed in the config.
 
 
 
@@ -78,13 +79,13 @@ First order of business is the connection to the IRC server:
 		connection:
 			endpoint: tcp:host=localhost:port=6667
 
-Connection endpoint is specified as twisted endpoint, see [the
-docs](http://twistedmatrix.com/documents/current/api/twisted.internet.endpoints.html#clientFromString)
+Connection endpoint is specified as twisted endpoint, see
+[the docs](http://twistedmatrix.com/documents/current/api/twisted.internet.endpoints.html#clientFromString)
 for format specs, it's all fairly straightforward.
 SSL connections are supported as well.
 
-Actual bot-user parameters (like nick and password) are [described
-here](http://twistedmatrix.com/documents/current/api/twisted.words.protocols.irc.IRCClient.html):
+Actual bot-user parameters (like nick and password) are
+[described here](http://twistedmatrix.com/documents/current/api/twisted.words.protocols.irc.IRCClient.html):
 
 		nickname: bot
 		realname: bordercamp bot
@@ -174,6 +175,5 @@ the way:
 Note that relay "name" corresponds to entry point module name, in case of
 "logtail", relay name is used, because it's omitted.
 
-[Baseline configuration
-file](https://github.com/mk-fg/bordercamp-irc-bot/blob/master/bordercamp/core.yaml)
+[Baseline configuration file](https://github.com/mk-fg/bordercamp-irc-bot/blob/master/bordercamp/core.yaml)
 should contain more details and up-to-date examples.

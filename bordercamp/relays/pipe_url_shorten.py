@@ -15,7 +15,7 @@ import re
 import os, json, httplib # would be great to replace w/ twisted.web.client
 
 def get_m29_url(url):
-	import Crypto.Cipher.AES # PyCrypto
+	import Crypto.Cipher.AES # pycrypto
 
 	key1, key2 = os.urandom(8), os.urandom(8)
 	pad = lambda s: s + (16 - len(s) % 16) * '\0'
