@@ -4,8 +4,6 @@ from __future__ import print_function
 from twisted.internet import defer, reactor
 from twisted.python import log
 
-import feedparser
-
 from bordercamp.routing import RelayedEvent
 from bordercamp.http import HTTPClient
 from bordercamp import force_bytes
@@ -13,7 +11,7 @@ from . import BCRelay
 
 import itertools as it, operator as op, functools as ft
 from collections import namedtuple
-import types, random, hashlib, sqlite3
+import types, random, hashlib, json, sqlite3
 
 
 class PostHashDB(object):
@@ -54,8 +52,10 @@ class FeedEntryInfo(namedtuple('FeedEntryInfo', 'feed post conf')):
 			try:
 				val = op.attrgetter(k)(self)
 				if not val: raise AttributeError(k)
-			except AttributeError:
-				if not spec: raise
+			except (AttributeError, KeyError):
+				if not spec:
+					raise KeyError( 'Failed to get critical'
+						' attribute {!r}, data: {!r}'.format(spec, self) )
 			else: return val
 		if not spec: raise ValueError('Invalid attr-spec: {!r}'.format(spec))
 
@@ -77,6 +77,8 @@ class FeedSyndication(BCRelay):
 		for url, opts in self.conf.feeds.viewitems():
 			opts.rebase(base)
 			opts.template = opts.template.decode('utf-8')
+			assert opts.type in ['feed', 'reddit-json'],\
+				'Feed type must be either "feed" or "reddit-json", not {!r}'.format(self.feeds[url].type)
 			self.feeds[url] = opts
 			self.schedule_fetch(url, startup=True)
 
@@ -102,11 +104,23 @@ class FeedSyndication(BCRelay):
 	def fetch_feed(self, url):
 		data = yield self.client.fetch(url)
 		if data is None: defer.returnValue(None) # cache hit or not modified
-		feed, headers = data
+		data, headers = data
 
-		parser = feedparser.parse(feed, response_headers=headers)
-		for post in reversed(parser.entries):
-			post_obj = FeedEntryInfo(parser.feed, post, self.conf)
+		if self.feeds[url].type == 'feed':
+			import feedparser
+			parser = feedparser.parse(feed, response_headers=headers)
+			feed, posts = parser.feed, parser.entries
+		elif self.feeds[url].type == 'reddit-json':
+			from lya import AttrDict # mandatory dep anyway
+			data = json.loads(data)['data']
+			posts = list(AttrDict(post['data']) for post in data.pop('children'))
+			feed = AttrDict(data)
+		else:
+			raise ValueError('Unrecognized feed type: {!r}'.format(self.feeds[url].type))
+
+		count = 0
+		for post in reversed(posts):
+			post_obj = FeedEntryInfo(feed, post, self.conf)
 
 			post_hash = hashlib.sha256('\0'.join(
 				force_bytes(post_obj.get_by_path(attr))
@@ -116,6 +130,9 @@ class FeedSyndication(BCRelay):
 			event = RelayedEvent(self.feeds[url].template.format(**post_obj._asdict()))
 			event.data = post_obj # for any further tricky filtering
 			reactor.callLater(0, self.interface.dispatch, event, source=self)
+
+			count += 1
+			if self.feeds[url].process_max and count >= self.feeds[url].process_max: break
 
 		self.schedule_fetch(url) # next one
 

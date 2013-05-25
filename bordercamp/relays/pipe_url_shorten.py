@@ -58,10 +58,12 @@ class Shortener(BCRelay):
 
 
 	def shorten(self, url):
-		try: func = getattr(self, 'shorten_{}'.format(self.conf.api.type))
-		except AttributeError:
-			raise ValueError('URL shortener "{}" is not supported')
-		return re.sub(r'^(?i)(https?|spdy)://', '', func(url, self.conf.api.parameters))
+		if len(url) >= self.conf.length_min:
+			try: func = getattr(self, 'shorten_{}'.format(self.conf.api.type))
+			except AttributeError:
+				raise ValueError('URL shortener "{}" is not supported')
+			url = func(url, self.conf.api.parameters)
+		return re.sub(r'^(?i)(https?|spdy)://', '', url)
 
 
 	def shorten_cut(self, url, params):

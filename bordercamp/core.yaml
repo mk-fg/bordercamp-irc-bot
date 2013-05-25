@@ -80,10 +80,12 @@ relay_defaults:
 
   feed_syndication:
     # Tails specified rss/atom feeds, converting entries there to irc lines.
-    # Uses https://pypi.python.org/pypi/feedparser/ module for fetch/processing.
+    # Uses https://pypi.python.org/pypi/feedparser/ module if "type=feed".
     feeds:
       # Map of "url: parameters" of feed URLs to fetch and processing parameters for each.
       _default: # used as a base for all other feed parameters
+        type: feed # "feed" (rss/atom/...) or "reddit-json" (reddit.com/.json and its clones)
+        process_max: # max number of (oldest) posts to process/relay on one fetch (0/null/false = inf)
         interval:
           base: 3600 # 1 fetch per hour
           jitter: 0.2 # add +/- 20% jitter to the individual feeds' fetch intervals, so they won't stampede
@@ -91,14 +93,16 @@ relay_defaults:
         # Template with individual feed/post parameters to extract.
         # Can be attributes of either "feed" (example: feed.title), "post"
         #  (example: post.summary) or "conf" (config for relay, example: conf.my_comment) object.
-        # See these docs for the list of usually-available ones:
+        # See one of these docs for the list of usually-available ones:
         #   http://pythonhosted.org/feedparser/common-rss-elements.html
         #   http://pythonhosted.org/feedparser/common-atom-elements.html
         #   http://pythonhosted.org/feedparser/basic.html
+        #   http://www.reddit.com/dev/api
         # Examples:
         #   '{feed.title}: {post.title}'
         #   'myfeed: {post.title} ({post.published_parsed})'
         #   '{post.title}:\n{post.summary_detail.value}'
+        #   'reddit <{post.url}>: {post.title} ({post.domain})'
         template: '{post.title}'
         deduplication:
           # List of parameters to hash for an unique feed/post-id
@@ -108,9 +112,9 @@ relay_defaults:
           #  false/null or empty string can be used to fallback to empty value instead of raising error.
           # Used to skip already-seen posts and detect relevant post modifications.
           # Only one of the fetched posts with the same hash will be relayed.
-          - [feed.id, feed.link, feed.title]
+          - [post.subreddit_id, feed.id, feed.link, feed.title]
           - post.id
-          # - [feed.id, feed.link, false] # fallback to empty value, if none of these are present
+          # - [feed.id, feed.link, null] # fallback to empty value, if none of these are present
       # 'http://some.site.tld/feed.rss': # for example
       #   interval:
       #     base: 1800
@@ -145,6 +149,7 @@ relay_defaults:
   pipe_url_shorten:
     # Shorten matched URLs via some URL shortener API.
     regex: '(?i)\b(?P<url>https?://[^\s<>(),;:]+)' # regexp with "url" group
+    length_min: 40 # don't obfuscate stuff that isn't that long to begin with
     api: # defines shortener service or method to use
       # Supported shorteners:
       #  cut - just cuts the url to a given size - int parameter (default: 50)
@@ -172,6 +177,9 @@ relay_defaults:
       # feed_no_questions: # drop rss feed items that have word "question" in the post summary
       #   match: data.post.summary # do event.data.post.summay lookup and filter that via regexp
       #   regex: '(?i)\bquestion\b'
+      #   action: drop
+      # attr_check:
+      #   match: data.post.is_self # no regexp = boolean check if attr exists and non-empty
       #   action: drop
 
   pipe_exherbo_pkgmon:

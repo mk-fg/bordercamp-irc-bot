@@ -17,21 +17,27 @@ class FilterPipe(BCRelay):
 		super(FilterPipe, self).__init__(*argz, **kwz)
 		self.rules = OrderedDict()
 		for name, rule in self.conf.rules.viewitems():
-			log.noise('Compiling filter (name: {}): {!r}'.format(name, rule.regex))
+			if 'regex' in rule:
+				log.noise('Compiling filter (name: {}): {!r}'.format(name, rule.regex))
+				check = re.compile(rule.regex)
+			else: check = None # boolean rule
+
 			try: action, optz = rule.action.split('-', 1)
 			except ValueError: action, optz = rule.action, list()
 			else:
 				if action == 'limit': optz = map(int, optz.split('/'))
 				else: optz = [optz]
-			self.rules[name] = re.compile(rule.regex), action, optz, rule.get('match')
+
+			self.rules[name] = check, action, optz, rule.get('match')
 		self.rule_hits, self.rule_notes, self.rule_drops = dict(), set(), defaultdict(int)
 
 	def dispatch(self, msg):
-		for name, (pat, action, optz, attr) in self.rules.viewitems():
-			try: msg_match = msg if not attr else op.attrgetter(attr)(msg)
+		for name, (check, action, optz, attr) in self.rules.viewitems():
+			try: msg_match = msg if not attr else (op.attrgetter(attr)(msg) or '')
 			except AttributeError: msg_match = ''
 
-			if not pat.search(msg_match):
+			if not ( check.search(msg_match)
+					if check is not None else bool(msg_match) ):
 				if 'nomatch' in optz:
 					if action == 'allow': return msg
 					elif action == 'drop': return
