@@ -146,8 +146,11 @@ relay_defaults:
     # Shorten matched URLs via some URL shortener API.
     regex: '(?i)\b(?P<url>https?://[^\s<>(),;:]+)' # regexp with "url" group
     api: # defines shortener service or method to use
-      type: cut # just cuts the url to a given size
-      parameters: 30 # shortener-specific parameters
+      # Supported shorteners:
+      #  cut - just cuts the url to a given size - int parameter (default: 50)
+      #  m29 - http://m29.us/ - no parameters
+      type: cut
+      parameters:
 
   pipe_filter:
     # Test patterns in "rules" section for every passed message, stopping on first match.
