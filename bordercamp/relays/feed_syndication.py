@@ -108,7 +108,7 @@ class FeedSyndication(BCRelay):
 
 		if self.feeds[url].type == 'feed':
 			import feedparser
-			parser = feedparser.parse(feed, response_headers=headers)
+			parser = feedparser.parse(data, response_headers=headers)
 			feed, posts = parser.feed, parser.entries
 		elif self.feeds[url].type == 'reddit-json':
 			from lya import AttrDict # mandatory dep anyway
