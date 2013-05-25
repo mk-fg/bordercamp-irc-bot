@@ -78,6 +78,51 @@ relay_defaults:
     #  in one batch, thus minizing the number of stat()/open() calls.
     processing_delay: 1.0
 
+  feed_syndication:
+    # Tails specified rss/atom feeds, converting entries there to irc lines.
+    # Uses https://pypi.python.org/pypi/feedparser/ module for fetch/processing.
+    feeds:
+      # Map of "url: parameters" of feed URLs to fetch and processing parameters for each.
+      _default: # used as a base for all other feed parameters
+        interval:
+          base: 3600 # 1 fetch per hour
+          jitter: 0.2 # add +/- 20% jitter to the individual feeds' fetch intervals, so they won't stampede
+          fetch_on_startup: true # do fetch right after "jitter" interval after start, not base+jitter as usual
+        # Template with individual feed/post parameters to extract.
+        # Can be attributes of either "feed" (example: feed.title), "post"
+        #  (example: post.summary) or "conf" (config for relay, example: conf.my_comment) object.
+        # See these docs for the list of usually-available ones:
+        #   http://pythonhosted.org/feedparser/common-rss-elements.html
+        #   http://pythonhosted.org/feedparser/common-atom-elements.html
+        #   http://pythonhosted.org/feedparser/basic.html
+        # Examples:
+        #   '{feed.title}: {post.title}'
+        #   'myfeed: {post.title} ({post.published_parsed})'
+        #   '{post.title}:\n{post.summary_detail.value}'
+        template: '{post.title}'
+        deduplication:
+          # List of parameters to hash for an unique feed/post-id
+          #  as an attributes of either feed/post/conf objects (see "extract" above).
+          # Used to skip already-seen posts and detect relevant post modifications.
+          # Only one of the fetched posts with the same hash will be relayed.
+          - feed.id
+          - post.id
+      # 'http://some.site.tld/feed.rss': # for example
+      #   interval:
+      #     base: 1800
+
+    # deduplication_cache (sqlite db) can be used to avoid
+    #   repeating already-relayed posts after bot restart, if set to some path
+    deduplication_cache: # example: /tmp/feed_syndication.sqlite
+
+    use_cache_headers: true # check/send cache-control, if-modified-since, if-none-match
+    request_pool_options: # options for twisted.web.client.HTTPConnectionPool
+      maxPersistentPerHost: 10
+      cachedConnectionTimeout: 600
+      retryAutomatically: true
+    ca_certs_files: /etc/ssl/certs/ca-certificates.crt # path or list of paths to tls ca certificates
+    user_agent: # to use with all requests, set automatically if empty
+
   pipe_sub:
     # Regexp replacements, using python re module.
     # http://docs.python.org/library/re.html#regular-expression-syntax
