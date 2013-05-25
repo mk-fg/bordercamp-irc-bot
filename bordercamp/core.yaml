@@ -142,6 +142,13 @@ relay_defaults:
     addr: # regexp with "addr" or "host" groups, but not both
     short: true # use only first part of the hostnames
 
+  pipe_url_shorten:
+    # Shorten matched URLs via some URL shortener API.
+    regex: '(?i)\b(?P<url>https?://[^\s<>(),;:]+)' # regexp with "url" group
+    api: # defines shortener service or method to use
+      type: cut # just cuts the url to a given size
+      parameters: 30 # shortener-specific parameters
+
   pipe_filter:
     # Test patterns in "rules" section for every passed message, stopping on first match.
     # Verdict can be "allow" or "drop", no-match decision is set from "policy".
