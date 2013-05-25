@@ -105,7 +105,7 @@ class HTTPClient(object):
 	def __init__(self, **kwz):
 		for k, v in kwz.viewitems():
 			getattr(self, k) # to somewhat protect against typos
-			setattr(self, k, v)
+			if v is not None: setattr(self, k, v)
 
 		pool = QuietHTTPConnectionPool(reactor, persistent=True)
 		for k, v in self.request_pool_options.viewitems():
@@ -205,6 +205,7 @@ class FeedSyndication(BCRelay):
 		base = self.conf.feeds.pop('_default')
 		for url, opts in self.conf.feeds.viewitems():
 			opts.rebase(base)
+			opts.template = opts.template.decode('utf-8')
 			self.feeds[url] = opts
 			self.schedule_fetch(url, startup=True)
 
@@ -233,7 +234,7 @@ class FeedSyndication(BCRelay):
 		feed, headers = data
 
 		parser = feedparser.parse(feed, response_headers=headers)
-		for post in parser.entries:
+		for post in reversed(parser.entries):
 			post_obj = FeedEntryInfo(parser.feed, post, self.conf)
 
 			post_hash = hashlib.sha256('\0'.join(
