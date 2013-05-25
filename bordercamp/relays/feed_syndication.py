@@ -13,12 +13,14 @@ from OpenSSL import crypto
 import feedparser
 from lya import AttrDict
 
+from bordercamp.routing import RelayedEvent
+from bordercamp import force_bytes
+from . import BCRelay
+
 import itertools as it, operator as op, functools as ft
 from collections import namedtuple
 import re, types, time, logging, rfc822, random, hashlib, sqlite3
 import twisted, bordercamp
-
-from . import BCRelay
 
 
 
@@ -187,7 +189,23 @@ class PostHashDB(object):
 
 
 
-FeedEntryInfo = namedtuple('FeedEntryInfo', 'feed post conf')
+class FeedEntryInfo(namedtuple('FeedEntryInfo', 'feed post conf')):
+	__slots__ = ()
+
+	def get_by_path(self, spec):
+		if isinstance(spec, types.StringTypes): spec = [spec]
+		spec = list(reversed(list(spec)))
+		while spec:
+			k = spec.pop()
+			if not k: return '' # empty fallback
+			try:
+				val = op.attrgetter(k)(self)
+				if not val: raise AttributeError(k)
+			except AttributeError:
+				if not spec: raise
+			else: return val
+		if not spec: raise ValueError('Invalid attr-spec: {!r}'.format(spec))
+
 
 class FeedSyndication(BCRelay):
 
@@ -238,11 +256,13 @@ class FeedSyndication(BCRelay):
 			post_obj = FeedEntryInfo(parser.feed, post, self.conf)
 
 			post_hash = hashlib.sha256('\0'.join(
-				op.attrgetter(attr)(post_obj) for attr in self.feeds[url].deduplication )).digest()
+				force_bytes(post_obj.get_by_path(attr))
+				for attr in self.feeds[url].deduplication )).digest()
 			if not self.dispatch_filter(post_hash): continue
 
-			lines = self.feeds[url].template.format(**post_obj._asdict())
-			reactor.callLater(0, self.interface.dispatch, lines, source=self)
+			event = RelayedEvent(self.feeds[url].template.format(**post_obj._asdict()))
+			event.data = post_obj # for any further tricky filtering
+			reactor.callLater(0, self.interface.dispatch, event, source=self)
 
 		self.schedule_fetch(url) # next one
 

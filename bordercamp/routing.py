@@ -9,6 +9,12 @@ from twisted.words.protocols import irc
 from twisted.python import log
 
 
+class RelayedEvent(unicode):
+	'''Can be used to pass events with random hidden data blob attached.
+		Blob can then be used for filtering, routing or whatever other purposes.'''
+	__slots__ = 'data',
+
+
 class BCInterface(object):
 	'''Persistent "interface" object sitting in-between persistent relay objects
 		and transient protocol objects, queueing/multiplexing messages from
@@ -109,8 +115,6 @@ class BCInterface(object):
 				' (user: {!r}, nick: {!r}, channel: {!r})'.format(user, nick, channel) )
 			return
 		self.dispatch(msg, source=self.channel_map[channel], user=nick)
-
-
 
 
 	@defer.inlineCallbacks

@@ -6,10 +6,12 @@ from datetime import datetime
 import os, sys
 
 from twisted.internet import reactor, protocol, defer
-from twisted.words.service import IRCUser, IRCFactory, InMemoryWordsRealm
+from twisted.words.service import IRCUser, IRCFactory, InMemoryWordsRealm, Group
 from twisted.cred import checkers, credentials, portal
 from twisted.words.protocols import irc
 from twisted.python import log
+
+from . import force_bytes, force_unicode
 
 
 class BCBot(irc.IRCClient):
@@ -106,6 +108,9 @@ class BCIRCUser(IRCUser):
 			self.sendMessage(code, text % self.factory._serverInfo)
 
 	def irc_JOIN(self, prefix, params):
+		if not self.avatar: # deny any access to no-auth users
+			self.sendMessage( irc.ERR_NOSUCHCHANNEL, params[0],
+				':No such channel (or only available for authorized users)' )
 		for channel in (params[0].split(',') if ',' in params[0] else [params[0]]):
 			IRCUser.irc_JOIN(self, prefix, [channel] + params[1:])
 
@@ -124,6 +129,23 @@ class BCIRCUser(IRCUser):
 			password, self.password = self.password, None
 			self.logInAs(nickname, password)
 
+	def privmsg(self, sender, recip, message):
+		# Hard to track how unicode leaks here
+		sender, recip, message = it.imap(force_bytes, [sender, recip, message])
+		return IRCUser.privmsg(self, sender, recip, message)
+
+
+
+class BCGroup(Group):
+
+	def remove(self, user, reason=None):
+		return Group.remove(self, user, force_unicode(reason))
+
+class BCRealm(InMemoryWordsRealm):
+
+	def groupFactory(self, name):
+		return BCGroup(name)
+
 
 class BCServerFactory(IRCFactory):
 
@@ -133,7 +155,7 @@ class BCServerFactory(IRCFactory):
 	def __init__(self, conf, *channels, **extra_creds):
 		self.conf = conf
 
-		realm = InMemoryWordsRealm(self.conf.name)
+		realm = BCRealm(self.conf.name)
 		passwd = (self.conf.passwd or dict()).copy()
 		passwd.update(extra_creds)
 		realm_portal = portal.Portal(realm, [

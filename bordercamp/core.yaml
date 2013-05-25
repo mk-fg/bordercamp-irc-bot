@@ -103,10 +103,14 @@ relay_defaults:
         deduplication:
           # List of parameters to hash for an unique feed/post-id
           #  as an attributes of either feed/post/conf objects (see "extract" above).
+          # Each entry can be a list of keys to fallback to if previous one is missing,
+          #  e.g. [feed.id, feed.link, feed.title] will pick guid or link or title,
+          #  false/null or empty string can be used to fallback to empty value instead of raising error.
           # Used to skip already-seen posts and detect relevant post modifications.
           # Only one of the fetched posts with the same hash will be relayed.
-          - feed.id
+          - [feed.id, feed.link, feed.title]
           - post.id
+          # - [feed.id, feed.link, false] # fallback to empty value, if none of these are present
       # 'http://some.site.tld/feed.rss': # for example
       #   interval:
       #     base: 1800
@@ -155,6 +159,10 @@ relay_defaults:
       # msgs_from_self:
       #   regex: '\sbordercamp\[(\d+|-)\]@\w+:\s'
       #   action: limit-1/90 # pass messages only if *rate* is below 1/90 (msg/s)
+      # feed_no_questions: # drop rss feed items that have word "question" in the post summary
+      #   match: data.post.summary # do event.data.post.summay lookup and filter that via regexp
+      #   regex: '(?i)\bquestion\b'
+      #   action: drop
 
   pipe_exherbo_pkgmon:
     # I use it to monitor #exherbo traffic to pick up patches
