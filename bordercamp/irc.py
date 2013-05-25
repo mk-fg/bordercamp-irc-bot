@@ -11,7 +11,7 @@ from twisted.cred import checkers, credentials, portal
 from twisted.words.protocols import irc
 from twisted.python import log
 
-from . import force_bytes, force_unicode
+from . import force_bytes
 
 
 class BCBot(irc.IRCClient):
@@ -139,7 +139,8 @@ class BCIRCUser(IRCUser):
 class BCGroup(Group):
 
 	def remove(self, user, reason=None):
-		return Group.remove(self, user, force_unicode(reason))
+		if isinstance(reason, bytes): reason = reason.decode('utf-8', 'replace')
+		return Group.remove(self, user, reason)
 
 class BCRealm(InMemoryWordsRealm):
 
