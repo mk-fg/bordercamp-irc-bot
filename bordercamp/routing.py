@@ -2,7 +2,7 @@
 from __future__ import print_function
 
 import itertools as it, operator as op, functools as ft
-import os, sys, inspect
+import os, sys, inspect, types
 
 from twisted.internet import reactor, protocol, defer
 from twisted.words.protocols import irc
@@ -23,7 +23,7 @@ class BCInterface(object):
 
 		def resolve(route, k, fork=False, lvl=0):
 			if k not in route: route[k] = list()
-			elif isinstance(route[k], str): route[k] = [route[k]]
+			elif isinstance(route[k], types.StringTypes): route[k] = [route[k]]
 			modules = list()
 			for v in route[k]:
 				if v not in routes: modules.append(v)
@@ -148,7 +148,7 @@ class BCInterface(object):
 				else:
 					if dst in self.relays:
 						extra_kwz = dict()
-						if isinstance(dst, str): dst = self.relays[dst]
+						if isinstance(dst, types.StringTypes): dst = self.relays[dst]
 						if user and 'source' in inspect.getargspec(dst.dispatch).args:
 							extra_kwz['source'] = user
 						log.noise('Delivering msgs to dst relay: {}, extra_kwz: {}'.format(dst, extra_kwz))
@@ -167,14 +167,14 @@ class BCInterface(object):
 		# Encode and deliver
 		for channel, msg in channels.viewitems():
 			for msg in msg:
-				if not isinstance(msg, str):
-					log.warn('Dropping non-str message: {!r}'.format(msg))
+				if not isinstance(msg, types.StringTypes):
+					log.warn('Dropping non-string message: {!r}'.format(msg))
 					continue
 				if isinstance(msg, unicode):
-					try: msg = msg.encode(irc_enc)
+					try: msg = msg.encode(self.irc_enc)
 					except UnicodeEncodeError as err:
-						log.warn('Failed to encode ({}) unicode msg ({!r}): {}'.format(irc_enc, msg, err))
-						msg = msg.encode(irc_enc, 'replace')
+						log.warn('Failed to encode ({}) unicode msg ({!r}): {}'.format(self.irc_enc, msg, err))
+						msg = msg.encode(self.irc_enc, 'replace')
 				max_len = self.proto._safeMaximumLineLength('PRIVMSG {} :'.format(channel)) - 2
 				first_line = True
 				for line in irc.split(msg, length=max_len):
