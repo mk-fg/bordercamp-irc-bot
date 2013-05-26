@@ -113,7 +113,7 @@ def main():
 
 	for lvl in 'noise', 'debug', 'info', ('warning', 'warn'), 'error', ('critical', 'fatal'):
 		lvl, func = lvl if isinstance(lvl, tuple) else (lvl, lvl)
-		assert not getattr(log, lvl, False)
+		assert not hasattr(log, lvl)
 		setattr(log, func, ft.partial( log.msg,
 			logLevel=logging.getLevelName(lvl.upper()) ))
 

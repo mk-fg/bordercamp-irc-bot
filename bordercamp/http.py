@@ -11,10 +11,14 @@ from twisted.python import log
 
 from OpenSSL import crypto
 
+from bordercamp import force_bytes
+
 import itertools as it, operator as op, functools as ft
-import re, types, time, rfc822
+import re, types, time, rfc822, io, json
 import twisted, bordercamp
 
+# Bad thing it's added there in the first place
+if not hasattr(log, 'noise'): log.noise = print
 
 
 # Based on twisted.mail.smtp.rfc822date, always localtime
@@ -112,11 +116,11 @@ class HTTPClient(object):
 		self.fetch_cache = dict() # {url: {header_name: processed_value, ...}, ...}
 
 	@defer.inlineCallbacks
-	def fetch(self, url):
-		if isinstance(url, unicode): url = url.encode('utf-8')
+	def request(self, url, method='get', decode=None, encode=None, data=None):
+		method, url = force_bytes(method).upper(), force_bytes(url)
 		headers = {'User-Agent': self.user_agent}
 
-		if self.use_cache_headers:
+		if method == 'GET' and self.use_cache_headers:
 			# Avoid doing extra work
 			cache = self.fetch_cache.get(url, dict())
 			if 'cache-control' in cache and cache['cache-control'] >= time.time():
@@ -125,20 +129,35 @@ class HTTPClient(object):
 				headers['If-Modified-Since'] = rfc822date(cache['last-modified'])
 			if 'etag' in cache: headers['If-None-Match'] = '"{}"'.format(cache['etag'])
 
-		log.noise('HTTP request: GET {} (h: {})'.format(url[:100], headers))
+		log.noise( 'HTTP request: {} {} (h: {}, enc: {}, dec: {}, data: {!r})'\
+			.format(method, url[:100], headers, encode, decode, type(data)) )
 
-		res = yield self.request_agent.request( 'GET', url,
-			Headers(dict((k,[v]) for k,v in (headers or dict()).viewitems())) )
+		if data is not None:
+			if encode is None:
+				if isinstance(data, types.StringTypes): data = io.BytesIO(data)
+			elif encode == 'form':
+				headers.setdefault('Content-Type', 'application/x-www-form-urlencoded')
+				data = io.BytesIO(urlencode(data))
+			elif encode == 'json':
+				headers.setdefault('Content-Type', 'application/json')
+				data = io.BytesIO(json.dumps(data))
+			else: raise ValueError('Unknown request encoding: {}'.format(encode))
+			data = FileBodyProducer(data)
+		if decode not in ['json', None]:
+			raise ValueError('Unknown response decoding method: {}'.format(decode))
+
+		res = yield self.request_agent.request( method, url,
+			Headers(dict((k,[v]) for k,v in (headers or dict()).viewitems())), data )
 		code = res.code
-		log.noise( 'HTTP request done (GET {}): {} {} {}'\
-			.format(url[:100], code, res.phrase, res.version) )
+		log.noise( 'HTTP request done ({} {}): {} {} {}'\
+			.format(method, url[:100], code, res.phrase, res.version) )
 		if code in [http.NO_CONTENT, http.NOT_MODIFIED]: defer.returnValue(None)
 		if code not in [http.OK, http.CREATED]: raise HTTPClientError(code, res.phrase)
 
 		data = defer.Deferred()
 		res.deliverBody(DataReceiver(data))
 
-		if self.use_cache_headers:
+		if method == 'GET' and self.use_cache_headers:
 			# Update headers' cache
 			cache = dict( (k.lower(), res.headers.getRawHeaders(k)[-1])
 				for k in ['Last-Modified', 'Cache-Control', 'ETag'] if res.headers.hasHeader(k) )
@@ -150,5 +169,6 @@ class HTTPClient(object):
 				if match: cache['cache-control'] = time.time() + int(match.group(1))
 			if cache: self.fetch_cache[url] = cache
 
-		defer.returnValue(( (yield data),
+		data = yield data
+		defer.returnValue(( json.loads(data) if decode is not None else data,
 			dict((k, v[-1]) for k,v in res.headers.getAllRawHeaders()) ))

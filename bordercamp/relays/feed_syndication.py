@@ -102,7 +102,7 @@ class FeedSyndication(BCRelay):
 
 	@defer.inlineCallbacks
 	def fetch_feed(self, url):
-		data = yield self.client.fetch(url)
+		data = yield self.client.request(url)
 		if data is None: defer.returnValue(None) # cache hit or not modified
 		data, headers = data
 
