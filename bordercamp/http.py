@@ -6,7 +6,7 @@ from twisted.web.client import Agent, RedirectAgent,\
 	GzipDecoder, FileBodyProducer, ResponseDone
 from twisted.web.http_headers import Headers
 from twisted.web import http
-from twisted.internet import defer, reactor, ssl, protocol
+from twisted.internet import defer, reactor, ssl, protocol, error
 from twisted.python import log
 
 from OpenSSL import crypto
@@ -146,21 +146,36 @@ class HTTPClient(object):
 		if decode not in ['json', None]:
 			raise ValueError('Unknown response decoding method: {}'.format(decode))
 
-		res = yield self.request_agent.request( method, url,
-			Headers(dict((k,[v]) for k,v in (headers or dict()).viewitems())), data )
-		code = res.code
-		log.noise( 'HTTP request done ({} {}): {} {} {}'\
-			.format(method, url[:100], code, res.phrase, res.version) )
-		if code in [http.NO_CONTENT, http.NOT_MODIFIED]: defer.returnValue(None)
-		if code not in [http.OK, http.CREATED]: raise HTTPClientError(code, res.phrase)
+		requests = None # indicates fallback to requests module (for e.g. ipv6-only site)
+		try:
+			res = yield self.request_agent.request( method, url,
+				Headers(dict((k,[v]) for k,v in (headers or dict()).viewitems())), data )
+		except error.DNSLookupError:
+			import requests
+			try: res = getattr(requests, method.lower())(url, headers=headers, data=data)
+			except requests.exceptions.RequestException as err:
+				raise HTTPClientError(None, 'Lookup/connection error')
 
-		data = defer.Deferred()
-		res.deliverBody(DataReceiver(data))
+		code, phrase, version = (res.code, res.phrase, res.version)\
+			if not requests else ( res.status_code,
+				http.RESPONSES[res.status_code], ('HTTP', 1, 1) )
+		log.noise( 'HTTP request done ({} {}): {} {} {}'\
+			.format(method, url[:100], code, phrase, version) )
+		if code in [http.NO_CONTENT, http.NOT_MODIFIED]: defer.returnValue(None)
+		if code not in [http.OK, http.CREATED]: raise HTTPClientError(code, phrase)
+
+		if not requests:
+			data = defer.Deferred()
+			res.deliverBody(DataReceiver(data))
+			data = yield data
+			headers = dict((k, v[-1]) for k,v in res.headers.getAllRawHeaders())
+		else: data, headers = res.text, res.headers
 
 		if method == 'GET' and self.use_cache_headers:
+			cache = dict((k.lower(), v) for k,v in headers.items())
+			cache = dict( (k, cache[k]) for k in
+				['last-modified', 'cache-control', 'etag'] if k in cache )
 			# Update headers' cache
-			cache = dict( (k.lower(), res.headers.getRawHeaders(k)[-1])
-				for k in ['Last-Modified', 'Cache-Control', 'ETag'] if res.headers.hasHeader(k) )
 			if 'last-modified' in cache:
 				ts = rfc822.parsedate_tz(cache['last-modified'])
 				cache['last-modified'] = time.mktime(ts[:9]) + (ts[9] or 0)
@@ -169,6 +184,4 @@ class HTTPClient(object):
 				if match: cache['cache-control'] = time.time() + int(match.group(1))
 			if cache: self.fetch_cache[url] = cache
 
-		data = yield data
-		defer.returnValue(( json.loads(data) if decode is not None else data,
-			dict((k, v[-1]) for k,v in res.headers.getAllRawHeaders()) ))
+		defer.returnValue((json.loads(data) if decode is not None else data, headers))
