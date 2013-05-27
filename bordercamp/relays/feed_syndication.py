@@ -5,7 +5,7 @@ from twisted.internet import defer, reactor
 from twisted.python import log
 
 from bordercamp.routing import RelayedEvent
-from bordercamp.http import HTTPClient
+from bordercamp.http import HTTPClient, HTTPClientError
 from bordercamp import force_bytes
 from . import BCRelay
 
@@ -102,8 +102,14 @@ class FeedSyndication(BCRelay):
 
 	@defer.inlineCallbacks
 	def fetch_feed(self, url):
-		data = yield self.client.request(url)
-		if data is None: defer.returnValue(None) # cache hit or not modified
+		self.schedule_fetch(url) # regardless of the errors here
+
+		try: data = yield self.client.request(url)
+		except HTTPClientError as err:
+			log.warn('Failed to fetch feed ({}): {}'.format(url, err.message))
+			data = None
+
+		if data is None: defer.returnValue(None) # cache hit, not modified, error
 		data, headers = data
 
 		if self.feeds[url].type == 'feed':
@@ -133,8 +139,6 @@ class FeedSyndication(BCRelay):
 
 			count += 1
 			if self.feeds[url].process_max and count >= self.feeds[url].process_max: break
-
-		self.schedule_fetch(url) # next one
 
 
 relay = FeedSyndication
