@@ -112,7 +112,7 @@ relay_defaults:
           #  false/null or empty string can be used to fallback to empty value instead of raising error.
           # Used to skip already-seen posts and detect relevant post modifications.
           # Only one of the fetched posts with the same hash will be relayed.
-          - [post.subreddit_id, feed.id, feed.link, feed.title]
+          - [post.subreddit_id, feed.id, feed.link, feed.title, null]
           - post.id
           # - [feed.id, feed.link, null] # fallback to empty value, if none of these are present
       # 'http://some.site.tld/feed.rss': # for example
@@ -120,8 +120,13 @@ relay_defaults:
       #     base: 1800
 
     # deduplication_cache (sqlite db) can be used to avoid
-    #   repeating already-relayed posts after bot restart, if set to some path
-    deduplication_cache: # example: /tmp/feed_syndication.sqlite
+    #   repeating already-relayed posts after bot restart, if set to some persistent path.
+    deduplication_cache:
+      path: ':memory:' # example: /var/cache/bordercamp/feed_syndication.sqlite
+      keep: # cleanup settings for this cache
+        cleanup_chance: 0.10 # trigger cleanup on ~1/10 inserts (5% chance)
+        per_feed_min: 60 # min latest entries per feed to keep
+        timeout_days: 30 # don't remove newer entries than that
 
     use_cache_headers: true # check/send cache-control, if-modified-since, if-none-match
     request_pool_options: # options for twisted.web.client.HTTPConnectionPool

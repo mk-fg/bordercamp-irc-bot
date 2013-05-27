@@ -11,6 +11,7 @@ from . import BCRelay
 
 import itertools as it, operator as op, functools as ft
 from collections import namedtuple
+from time import time
 import types, random, hashlib, json, sqlite3
 
 
@@ -18,26 +19,57 @@ class PostHashDB(object):
 
 	db = db_init = None
 
-	def __init__(self, db_path):
+	def __init__(self, db_path=':memory:', cleanup_opts=None):
 		self.db = sqlite3.connect(db_path)
 		self.db.text_factory = bytes
-		self.db.executescript( 'CREATE TABLE IF NOT EXISTS processed'
-			' (hash BLOB PRIMARY KEY ON CONFLICT REPLACE NOT NULL);' )
+		self.db.executescript(
+			'CREATE TABLE IF NOT EXISTS processed_v2'
+				' (feed blob not null, hash blob not null primary'
+					" key on conflict replace, ts timestamp default (strftime('%s', 'now')));"
+			' CREATE INDEX IF NOT EXISTS processed_v2_ts ON processed_v2 (ts);'
+			' DROP TABLE IF EXISTS processed;' )
+		self.cleanup_opts = cleanup_opts
 
 	def __del__(self):
 		if self.db:
 			self.db.close()
 			self.db = None
 
-	def __contains__(self, k):
-		with self.db:
-			cur = self.db.execute('SELECT 1 FROM processed WHERE hash = ? LIMIT 1', (k,))
+	def hash(self, val):
+		if not isinstance(val, types.StringTypes): val = '\0'.join(val)
+		val = force_bytes(val)
+		return hashlib.sha256(val).digest()
+
+	def cleanup(self, link):
+		if not self.cleanup_opts\
+			or random.random() > self.cleanup_opts.cleanup_chance: return
+		ts_max = self.cleanup_opts.timeout_days * 24 * 3600 - time()
+		cur = link.execute( 'SELECT hash FROM processed_v2'
+			' ORDER BY ts DESC LIMIT ?', (self.cleanup_opts.per_feed_min,) )
+		hashes = map(op.itemgetter(0), cur.fetchall())
+		cur.close()
+		link.execute( ( 'DELETE FROM processed_v2'
+				' WHERE ts < ? AND hash NOT IN ({})' )\
+			.format(', '.join(['?']*len(hashes))), tuple([ts_max] + hashes) ).close()
+
+	def _check(self, fk=None):
+		with self.db as link:
+			cur = link.execute( 'SELECT 1 FROM'
+				' processed_v2 WHERE hash = ? LIMIT 1', (fk,) )
 			try: return bool(cur.fetchone())
 			finally: cur.close()
 
-	def add(self, k):
-		if k in self: return
-		with self.db: self.db.execute('INSERT INTO processed (hash) VALUES (?)', (k,)).close()
+	def check(self, feed, k):
+		return self._check(self.hash(feed) + self.hash(k))
+
+	def add(self, feed, k):
+		feed_hash, k_hash = self.hash(feed), self.hash(k)
+		if self._check(feed_hash + k_hash): return False
+		with self.db as link:
+			link.execute( 'INSERT INTO processed_v2 (feed, hash)'
+				' VALUES (?, ?)', (feed_hash, feed_hash + k_hash) ).close()
+			self.cleanup(link)
+		return True
 
 
 class FeedEntryInfo(namedtuple('FeedEntryInfo', 'feed post conf')):
@@ -82,8 +114,9 @@ class FeedSyndication(BCRelay):
 			self.feeds[url] = opts
 			self.schedule_fetch(url, fast=opts.interval.fetch_on_startup)
 
-		self.filter_db = set() if not self.conf.deduplication_cache\
-			else PostHashDB(self.conf.deduplication_cache)
+		self.filter_db = PostHashDB(
+			self.conf.deduplication_cache.path,
+			self.conf.deduplication_cache.keep )
 
 	def schedule_fetch(self, url, fast=False):
 		interval = self.feeds[url].interval
@@ -91,12 +124,6 @@ class FeedSyndication(BCRelay):
 		interval = jitter if fast else (interval.base + (jitter * random.choice([-1, 1])))
 		log.noise('Scheduling fetch for feed (url: {}) in {}s'.format(url, interval))
 		reactor.callLater(interval, self.fetch_feed, url)
-
-	def dispatch_filter(self, post_hash):
-		assert isinstance(post_hash, bytes)
-		if post_hash in self.filter_db: return False
-		self.filter_db.add(post_hash)
-		return True
 
 	@defer.inlineCallbacks
 	def fetch_feed(self, url):
@@ -126,10 +153,10 @@ class FeedSyndication(BCRelay):
 		for post in reversed(posts):
 			post_obj = FeedEntryInfo(feed, post, self.conf)
 
-			post_hash = hashlib.sha256('\0'.join(
+			post_id = list(
 				force_bytes(post_obj.get_by_path(attr))
-				for attr in self.feeds[url].deduplication )).digest()
-			if not self.dispatch_filter(post_hash): continue
+				for attr in self.feeds[url].deduplication )
+			if not self.filter_db.add(url, post_id): continue
 
 			event = RelayedEvent(self.feeds[url].template.format(**post_obj._asdict()))
 			event.data = post_obj # for any further tricky filtering
