@@ -80,17 +80,15 @@ class FeedSyndication(BCRelay):
 			assert opts.type in ['feed', 'reddit-json'],\
 				'Feed type must be either "feed" or "reddit-json", not {!r}'.format(self.feeds[url].type)
 			self.feeds[url] = opts
-			self.schedule_fetch(url, startup=True)
+			self.schedule_fetch(url, fast=opts.interval.fetch_on_startup)
 
 		self.filter_db = set() if not self.conf.deduplication_cache\
 			else PostHashDB(self.conf.deduplication_cache)
 
-	def schedule_fetch(self, url, startup=False):
+	def schedule_fetch(self, url, fast=False):
 		interval = self.feeds[url].interval
-		interval = (interval.jitter * interval.base * random.random())\
-			if startup and interval.fetch_on_startup\
-			else (interval.base + ( interval.jitter * interval.base
-				* random.random() * random.choice([-1, 1]) ))
+		jitter = interval.jitter * interval.base * random.random()
+		interval = jitter if fast else (interval.base + (jitter * random.choice([-1, 1])))
 		log.noise('Scheduling fetch for feed (url: {}) in {}s'.format(url, interval))
 		reactor.callLater(interval, self.fetch_feed, url)
 
@@ -102,12 +100,12 @@ class FeedSyndication(BCRelay):
 
 	@defer.inlineCallbacks
 	def fetch_feed(self, url):
-		self.schedule_fetch(url) # regardless of the errors here
-
+		err = None
 		try: data = yield self.client.request(url)
 		except HTTPClientError as err:
-			log.warn('Failed to fetch feed ({}): {}'.format(url, err.message))
+			log.warn('Failed to fetch feed ({}): {}'.format(url, err))
 			data = None
+		finally: self.schedule_fetch(url, fast=bool(err)) # do faster re-fetch on errors
 
 		if data is None: defer.returnValue(None) # cache hit, not modified, error
 		data, headers = data
