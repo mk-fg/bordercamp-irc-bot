@@ -15,7 +15,7 @@ from bordercamp import force_bytes
 
 import itertools as it, operator as op, functools as ft
 import re, types, time, rfc822, io, json
-import twisted, bordercamp
+import twisted, bordercamp, signal
 
 # Bad thing it's added there in the first place
 if not hasattr(log, 'noise'): log.noise = print
@@ -100,6 +100,7 @@ class HTTPClient(object):
 	ca_certs_files = b'/etc/ssl/certs/ca-certificates.crt'
 	user_agent = b'bordercamp-irc-bot/{} twisted/{}'\
 		.format(bordercamp.__version__, twisted.__version__)
+	sync_fallback_timeout = 180 # timeout for synchronous fallback requests
 
 	def __init__(self, **kwz):
 		for k, v in kwz.viewitems():
@@ -152,6 +153,7 @@ class HTTPClient(object):
 				Headers(dict((k,[v]) for k,v in (headers or dict()).viewitems())), data )
 		except error.DNSLookupError:
 			import requests
+			signal.alarm(self.sync_fallback_timeout) # should kill the daemon
 			try: res = getattr(requests, method.lower())(url, headers=headers, data=data)
 			except requests.exceptions.RequestException as err:
 				raise HTTPClientError(None, 'Lookup/connection error')
@@ -169,7 +171,9 @@ class HTTPClient(object):
 			res.deliverBody(DataReceiver(data))
 			data = yield data
 			headers = dict((k, v[-1]) for k,v in res.headers.getAllRawHeaders())
-		else: data, headers = res.text, res.headers
+		else:
+			data, headers = res.text, res.headers
+			signal.alarm(0)
 
 		if method == 'GET' and self.use_cache_headers:
 			cache = dict((k.lower(), v) for k,v in headers.items())
