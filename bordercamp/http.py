@@ -153,10 +153,12 @@ class HTTPClient(object):
 				Headers(dict((k,[v]) for k,v in (headers or dict()).viewitems())), data )
 		except error.DNSLookupError:
 			import requests
-			signal.alarm(self.sync_fallback_timeout) # should kill the daemon
-			try: res = getattr(requests, method.lower())(url, headers=headers, data=data)
-			except requests.exceptions.RequestException as err:
-				raise HTTPClientError(None, 'Lookup/connection error')
+			signal.alarm(self.sync_fallback_timeout)
+			try:
+				try: res = getattr(requests, method.lower())(url, headers=headers, data=data)
+				except requests.exceptions.RequestException as err:
+					raise HTTPClientError(None, 'Lookup/connection error')
+			finally: signal.alarm(0)
 
 		code, phrase, version = (res.code, res.phrase, res.version)\
 			if not requests else ( res.status_code,
@@ -172,8 +174,9 @@ class HTTPClient(object):
 			data = yield data
 			headers = dict((k, v[-1]) for k,v in res.headers.getAllRawHeaders())
 		else:
-			data, headers = res.text, res.headers
-			signal.alarm(0)
+			signal.alarm(self.sync_fallback_timeout)
+			try: data, headers = res.text, res.headers
+			finally: signal.alarm(0)
 
 		if method == 'GET' and self.use_cache_headers:
 			cache = dict((k.lower(), v) for k,v in headers.items())
