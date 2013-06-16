@@ -15,7 +15,7 @@ from bordercamp import force_bytes
 
 import itertools as it, operator as op, functools as ft
 import re, types, time, rfc822, io, json
-import twisted, bordercamp, signal
+import twisted, bordercamp
 
 # Bad thing it's added there in the first place
 if not hasattr(log, 'noise'): log.noise = print
@@ -97,7 +97,7 @@ class HTTPClientError(Exception):
 		super(HTTPClientError, self).__init__(code, msg)
 		self.code = code
 
-class ThreadTimeout(Exception): pass
+class SyncTimeout(Exception): pass
 
 
 class HTTPClient(object):
@@ -125,6 +125,18 @@ class HTTPClient(object):
 			reactor, TLSContextFactory(self.ca_certs_files), pool=pool )), [('gzip', GzipDecoder)])
 
 		self.fetch_cache = dict() # {url: {header_name: processed_value, ...}, ...}
+
+	@defer.inlineCallbacks
+	def sync_wrap(self, func, *argz, **kwz):
+		timeout = defer.Deferred()
+		reactor.callLater( self.sync_fallback_timeout,
+			lambda: not timeout.called and timeout.callback(SyncTimeout) )
+		try:
+			res = yield first_result(timeout, threads.deferToThread(func, *argz, **kwz))
+			if res is SyncTimeout: raise res()
+		finally:
+			if not timeout.called: timeout.cancel()
+		defer.returnValue(res)
 
 	@defer.inlineCallbacks
 	def request(self, url, method='get', decode=None, encode=None, data=None):
@@ -163,16 +175,11 @@ class HTTPClient(object):
 				Headers(dict((k,[v]) for k,v in (headers or dict()).viewitems())), data )
 		except error.DNSLookupError:
 			import requests
-			timeout = defer.Deferred()
-			reactor.callLater( self.sync_fallback_timeout,
-				lambda: not timeout.called and timeout.callback(None) )
 			try:
-				res = yield first_result(timeout, threads.deferToThread(
-					getattr(requests, method.lower()), url, headers=headers, data=data ))
-				if res is None: raise ThreadTimeout()
-			except (requests.exceptions.RequestException, ThreadTimeout) as err:
-				raise HTTPClientError(None, 'Lookup/connection error')
-			if not timeout.called: timeout.cancel()
+				res = self.sync_wrap(
+					getattr(requests, method.lower()), url, headers=headers, data=data )
+			except (requests.exceptions.RequestException, SyncTimeout) as err:
+				raise HTTPClientError(None, 'Lookup/connection error: {}'.format(err))
 
 		code, phrase, version = (res.code, res.phrase, res.version)\
 			if not requests else ( res.status_code,
@@ -188,9 +195,11 @@ class HTTPClient(object):
 			data = yield data
 			headers = dict((k, v[-1]) for k,v in res.headers.getAllRawHeaders())
 		else:
-			signal.alarm(self.sync_fallback_timeout)
-			try: data, headers = res.text, res.headers
-			finally: signal.alarm(0)
+			try:
+				data = self.sync_wrap(getattr, res, 'text')
+				headers = self.sync_wrap(getattr, res, 'headers')
+			except (requests.exceptions.RequestException, SyncTimeout) as err:
+				raise HTTPClientError(None, 'Sync connection error: {}'.format(err))
 
 		if method == 'GET' and self.use_cache_headers:
 			cache = dict((k.lower(), v) for k,v in headers.items())
