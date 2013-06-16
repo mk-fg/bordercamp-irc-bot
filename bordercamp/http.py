@@ -131,11 +131,8 @@ class HTTPClient(object):
 		timeout = defer.Deferred()
 		reactor.callLater( self.sync_fallback_timeout,
 			lambda: not timeout.called and timeout.callback(SyncTimeout) )
-		try:
-			res = yield first_result(timeout, threads.deferToThread(func, *argz, **kwz))
-			if res is SyncTimeout: raise res()
-		finally:
-			if not timeout.called: timeout.cancel()
+		res = yield first_result(timeout, threads.deferToThread(func, *argz, **kwz))
+		if res is SyncTimeout: raise res()
 		defer.returnValue(res)
 
 	@defer.inlineCallbacks
