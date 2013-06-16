@@ -176,7 +176,7 @@ class HTTPClient(object):
 		except error.DNSLookupError:
 			import requests
 			try:
-				res = self.sync_wrap(
+				res = yield self.sync_wrap(
 					getattr(requests, method.lower()), url, headers=headers, data=data )
 			except (requests.exceptions.RequestException, SyncTimeout) as err:
 				raise HTTPClientError(None, 'Lookup/connection error: {}'.format(err))
@@ -196,8 +196,8 @@ class HTTPClient(object):
 			headers = dict((k, v[-1]) for k,v in res.headers.getAllRawHeaders())
 		else:
 			try:
-				data = self.sync_wrap(getattr, res, 'text')
-				headers = self.sync_wrap(getattr, res, 'headers')
+				data = yield self.sync_wrap(getattr, res, 'text')
+				headers = yield self.sync_wrap(getattr, res, 'headers')
 			except (requests.exceptions.RequestException, SyncTimeout) as err:
 				raise HTTPClientError(None, 'Sync connection error: {}'.format(err))
 
