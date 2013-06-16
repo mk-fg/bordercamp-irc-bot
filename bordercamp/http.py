@@ -6,7 +6,7 @@ from twisted.web.client import Agent, RedirectAgent,\
 	GzipDecoder, FileBodyProducer, ResponseDone
 from twisted.web.http_headers import Headers
 from twisted.web import http
-from twisted.internet import defer, reactor, ssl, protocol, error
+from twisted.internet import defer, reactor, ssl, protocol, error, threads
 from twisted.python import log
 
 from OpenSSL import crypto
@@ -35,6 +35,14 @@ def rfc822date(ts=None):
 			 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec' ][timeinfo[1] - 1],
 		timeinfo[0], timeinfo[3], timeinfo[4], timeinfo[5],
 		tzhr, tzmin )
+
+@defer.inlineCallbacks
+def first_result(*deferreds):
+	try:
+		res, idx = yield defer.DeferredList(
+			deferreds, fireOnOneCallback=True, fireOnOneErrback=True )
+	except defer.FirstError as err: err.subFailure.raiseException()
+	defer.returnValue(res)
 
 
 class DataReceiver(protocol.Protocol):
@@ -89,6 +97,8 @@ class HTTPClientError(Exception):
 		super(HTTPClientError, self).__init__(code, msg)
 		self.code = code
 
+class ThreadTimeout(Exception): pass
+
 
 class HTTPClient(object):
 
@@ -100,7 +110,7 @@ class HTTPClient(object):
 	ca_certs_files = b'/etc/ssl/certs/ca-certificates.crt'
 	user_agent = b'bordercamp-irc-bot/{} twisted/{}'\
 		.format(bordercamp.__version__, twisted.__version__)
-	sync_fallback_timeout = 180 # timeout for synchronous fallback requests
+	sync_fallback_timeout = 180 # timeout for synchronous fallback requests in a thread
 
 	def __init__(self, **kwz):
 		for k, v in kwz.viewitems():
@@ -153,12 +163,19 @@ class HTTPClient(object):
 				Headers(dict((k,[v]) for k,v in (headers or dict()).viewitems())), data )
 		except error.DNSLookupError:
 			import requests
-			signal.alarm(self.sync_fallback_timeout)
+			req = threads.deferToThread(
+				getattr(requests, method.lower()), url, headers=headers, data=data )
+			timeout = defer.Deferred()
+			reactor.callLater( self.sync_fallback_timeout,
+				lambda: not timeout.called and timeout.callback(None) )
 			try:
-				try: res = getattr(requests, method.lower())(url, headers=headers, data=data)
-				except requests.exceptions.RequestException as err:
-					raise HTTPClientError(None, 'Lookup/connection error')
-			finally: signal.alarm(0)
+				res = yield first_result(req, timeout)
+				if res is None: # timeout
+					req.cancel()
+					raise ThreadTimeout()
+			except (requests.exceptions.RequestException, ThreadTimeout) as err:
+				raise HTTPClientError(None, 'Lookup/connection error')
+			if not timeout.called: timeout.cancel()
 
 		code, phrase, version = (res.code, res.phrase, res.version)\
 			if not requests else ( res.status_code,
