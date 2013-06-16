@@ -163,16 +163,13 @@ class HTTPClient(object):
 				Headers(dict((k,[v]) for k,v in (headers or dict()).viewitems())), data )
 		except error.DNSLookupError:
 			import requests
-			req = threads.deferToThread(
-				getattr(requests, method.lower()), url, headers=headers, data=data )
 			timeout = defer.Deferred()
 			reactor.callLater( self.sync_fallback_timeout,
 				lambda: not timeout.called and timeout.callback(None) )
 			try:
-				res = yield first_result(req, timeout)
-				if res is None: # timeout
-					req.cancel()
-					raise ThreadTimeout()
+				res = yield first_result(timeout, threads.deferToThread(
+					getattr(requests, method.lower()), url, headers=headers, data=data ))
+				if res is None: raise ThreadTimeout()
 			except (requests.exceptions.RequestException, ThreadTimeout) as err:
 				raise HTTPClientError(None, 'Lookup/connection error')
 			if not timeout.called: timeout.cancel()
