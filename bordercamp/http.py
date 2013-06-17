@@ -19,6 +19,7 @@ import twisted, bordercamp
 
 # Bad thing it's added there in the first place
 if not hasattr(log, 'noise'): log.noise = print
+if not hasattr(log, 'debug'): log.debug = print
 
 
 # Based on twisted.mail.smtp.rfc822date, always localtime
@@ -98,6 +99,7 @@ class HTTPClientError(Exception):
 		self.code = code
 
 class SyncTimeout(Exception): pass
+class SyncError(Exception): pass
 
 
 class HTTPClient(object):
@@ -110,6 +112,7 @@ class HTTPClient(object):
 	ca_certs_files = b'/etc/ssl/certs/ca-certificates.crt'
 	user_agent = b'bordercamp-irc-bot/{} twisted/{}'\
 		.format(bordercamp.__version__, twisted.__version__)
+	hide_connection_errors = False
 	sync_fallback_timeout = 180 # timeout for synchronous fallback requests in a thread
 
 	def __init__(self, **kwz):
@@ -131,8 +134,13 @@ class HTTPClient(object):
 		timeout = defer.Deferred()
 		reactor.callLater( self.sync_fallback_timeout,
 			lambda: not timeout.called and timeout.callback(SyncTimeout) )
-		res = yield first_result(timeout, threads.deferToThread(func, *argz, **kwz))
+		def thread_wrapper():
+			# Do not let exception to be raise in a thread - twisted logs these as unhandled
+			try: return func(*argz, **kwz)
+			except Exception as err: return SyncError(err)
+		res = yield first_result(timeout, threads.deferToThread(thread_wrapper))
 		if res is SyncTimeout: raise res()
+		if isinstance(res, SyncError): raise res.args[0]
 		defer.returnValue(res)
 
 	@defer.inlineCallbacks
@@ -176,7 +184,11 @@ class HTTPClient(object):
 				res = yield self.sync_wrap(
 					getattr(requests, method.lower()), url, headers=headers, data=data )
 			except (requests.exceptions.RequestException, SyncTimeout) as err:
-				raise HTTPClientError(None, 'Lookup/connection error: {}'.format(err))
+				if not self.hide_connection_errors:
+					raise HTTPClientError(None, 'Lookup/connection error: {}'.format(err))
+				else:
+					log.debug('Lookup/connection error (supressed): {}'.format(err))
+					defer.returnValue(None) # should also supress fast refetching
 
 		code, phrase, version = (res.code, res.phrase, res.version)\
 			if not requests else ( res.status_code,

@@ -135,6 +135,7 @@ relay_defaults:
       retryAutomatically: true
     ca_certs_files: /etc/ssl/certs/ca-certificates.crt # path or list of paths to tls ca certificates
     user_agent: # to use with all requests, set automatically if empty
+    hide_connection_errors: false # lower logging severity of connection errors (for e.g. bad links)
 
   pipe_sub:
     # Regexp replacements, using python re module.
