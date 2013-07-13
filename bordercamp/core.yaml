@@ -313,6 +313,13 @@ core:
   nickname_lstrip: '*?@~&%+' # various owner/mode prefixes
   channel_prefix: '#~&' # used to distinguish channel and nickname
 
+  # Max length of the actual text, without PRIVMSG, line endings and other things.
+  # Text will be split into multiple lines on that mark,
+  #  but can also be split by twisted by it's IRCClient._safeMaximumLineLength() mark,
+  #  which should be ~500 bytes, and accounts for command/chan lengths and spaces.
+  # Setting <200 limit here should ensure that only bordercamp does the splits.
+  max_line_length: 180
+
   # Emulate xattr module interface with simple k-v db for modules that use it
   # Can be useful if xattr manipulation is limited by permissions (e.g. read-only) or fs capabilities
   # Should be either empty/None/False or a path to shelve db (example - "xattr_emulation: /tmp/xattr.db")

@@ -22,8 +22,9 @@ class BCInterface(object):
 
 	proto = None
 
-	def __init__(self, irc_enc='utf-8', chan_prefix='#', dry_run=False):
-		self.irc_enc, self.chan_prefix, self.dry_run = irc_enc, chan_prefix, dry_run
+	def __init__(self, irc_enc='utf-8', chan_prefix='#', max_line_length=180, dry_run=False):
+		self.irc_enc, self.chan_prefix = irc_enc, chan_prefix
+		self.max_line_length, self.dry_run = max_line_length, dry_run
 
 	def update(self, relays, channels, routes):
 
@@ -179,7 +180,8 @@ class BCInterface(object):
 					except UnicodeEncodeError as err:
 						log.warn('Failed to encode ({}) unicode msg ({!r}): {}'.format(self.irc_enc, msg, err))
 						msg = msg.encode(self.irc_enc, 'replace')
-				max_len = self.proto._safeMaximumLineLength('PRIVMSG {} :'.format(channel)) - 2
+				max_len = min( self.max_line_length,
+					self.proto._safeMaximumLineLength('PRIVMSG {} :'.format(channel)) - 2 )
 				first_line = True
 				for line in irc.split(msg, length=max_len):
 					if not first_line: line = '  {}'.format(line)
