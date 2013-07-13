@@ -102,7 +102,9 @@ class FeedSyndication(BCRelay):
 		self.client = HTTPClient(
 			use_cache_headers=self.conf.use_cache_headers,
 			request_pool_options=self.conf.request_pool_options,
-			ca_certs_files=self.conf.ca_certs_files, user_agent=self.conf.user_agent )
+			ca_certs_files=self.conf.ca_certs_files,
+			user_agent=self.conf.user_agent,
+			hide_connection_errors=self.conf.hide_connection_errors )
 
 		self.feeds = dict()
 		base = self.conf.feeds.pop('_default')
