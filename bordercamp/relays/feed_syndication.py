@@ -2,6 +2,7 @@
 from __future__ import print_function
 
 from twisted.internet import defer, reactor
+from twisted.web.microdom import unescape
 from twisted.python import log
 
 from bordercamp.routing import RelayedEvent
@@ -129,6 +130,8 @@ class FeedSyndication(BCRelay):
 
 	@defer.inlineCallbacks
 	def fetch_feed(self, url):
+		feed_type = self.feeds[url].type
+
 		err = None
 		try: data = yield self.client.request(url)
 		except HTTPClientError as err:
@@ -139,11 +142,11 @@ class FeedSyndication(BCRelay):
 		if data is None: defer.returnValue(None) # cache hit, not modified, error
 		data, headers = data
 
-		if self.feeds[url].type == 'feed':
+		if feed_type == 'feed':
 			import feedparser
 			parser = feedparser.parse(data, response_headers=headers)
 			feed, posts = parser.feed, parser.entries
-		elif self.feeds[url].type == 'reddit-json':
+		elif feed_type == 'reddit-json':
 			from lya import AttrDict # mandatory dep anyway
 			data = json.loads(data)['data']
 			posts = list(AttrDict(post['data']) for post in data.pop('children'))
@@ -153,6 +156,12 @@ class FeedSyndication(BCRelay):
 
 		count = 0
 		for post in reversed(posts):
+			if feed_type == 'reddit-json':
+				# Some reddit-api-specific encoding hacks
+				try: title = unescape(post['title'])
+				except KeyError: pass
+				else: post.title = title
+
 			post_obj = FeedEntryInfo(feed, post, self.conf)
 
 			post_id = list(
