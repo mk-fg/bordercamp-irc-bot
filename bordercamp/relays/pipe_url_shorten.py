@@ -30,6 +30,7 @@ class Shortener(BCRelay):
 
 	@defer.inlineCallbacks
 	def shorten(self, url):
+		url = force_bytes(url)
 		if len(url) >= self.conf.length_min:
 			try: func = getattr(self, 'shorten_{}'.format(self.conf.api.type))
 			except AttributeError:
