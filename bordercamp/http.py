@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
 
-from twisted.web.client import Agent, RedirectAgent,\
-	HTTPConnectionPool, HTTP11ClientProtocol, ContentDecoderAgent,\
-	GzipDecoder, FileBodyProducer, ResponseDone
+from twisted.web.client import ( Agent, RedirectAgent,
+	HTTPConnectionPool, HTTP11ClientProtocol, ContentDecoderAgent,
+	GzipDecoder, FileBodyProducer, ResponseDone, ResponseFailed,
+	RequestNotSent, RequestTransmissionFailed )
 from twisted.web.http_headers import Headers
 from twisted.web import http
 from twisted.internet import defer, reactor, ssl, protocol, error, threads
@@ -175,6 +176,7 @@ class HTTPClient(object):
 			raise ValueError('Unknown response decoding method: {}'.format(decode))
 
 		requests = None # indicates fallback to requests module (for e.g. ipv6-only site)
+		err = None
 		try:
 			res = yield self.request_agent.request( method, url,
 				Headers(dict((k,[v]) for k,v in (headers or dict()).viewitems())), data )
@@ -183,12 +185,15 @@ class HTTPClient(object):
 			try:
 				res = yield self.sync_wrap(
 					getattr(requests, method.lower()), url, headers=headers, data=data )
-			except (requests.exceptions.RequestException, SyncTimeout) as err:
-				if not self.hide_connection_errors:
-					raise HTTPClientError(None, 'Lookup/connection error: {}'.format(err))
-				else:
-					log.debug('Lookup/connection error (supressed): {}'.format(err))
-					defer.returnValue(None) # should also supress fast refetching
+			except (requests.exceptions.RequestException, SyncTimeout) as err: pass
+		except (ResponseFailed, RequestNotSent, RequestTransmissionFailed) as err: pass
+
+		if err:
+			if not self.hide_connection_errors:
+				raise HTTPClientError(None, 'Lookup/connection error: {}'.format(err))
+			else:
+				log.debug('Lookup/connection error (supressed): {}'.format(err))
+				defer.returnValue(None) # should also supress fast refetching
 
 		code, phrase, version = (res.code, res.phrase, res.version)\
 			if not requests else ( res.status_code,
