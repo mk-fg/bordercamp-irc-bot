@@ -171,7 +171,8 @@ class HTTPClient(object):
 				headers.setdefault('Content-Type', 'application/json')
 				data = io.BytesIO(json.dumps(data))
 			else: raise ValueError('Unknown request encoding: {}'.format(encode))
-			data = FileBodyProducer(data)
+			data_raw, data = data, FileBodyProducer(data)
+		else: data_raw = None
 		if decode not in ['json', None]:
 			raise ValueError('Unknown response decoding method: {}'.format(decode))
 
@@ -184,7 +185,7 @@ class HTTPClient(object):
 			import requests
 			try:
 				res = yield self.sync_wrap(
-					getattr(requests, method.lower()), url, headers=headers, data=data )
+					getattr(requests, method.lower()), url, headers=headers, data=data_raw )
 			except (requests.exceptions.RequestException, SyncTimeout) as err: pass
 		except (ResponseFailed, RequestNotSent, RequestTransmissionFailed) as err: pass
 
