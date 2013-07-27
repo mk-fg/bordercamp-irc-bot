@@ -182,12 +182,14 @@ class HTTPClient(object):
 			res = yield self.request_agent.request( method, url,
 				Headers(dict((k,[v]) for k,v in (headers or dict()).viewitems())), data )
 		except error.DNSLookupError:
-			import requests
+			import requests, socket
 			try:
 				res = yield self.sync_wrap(
 					getattr(requests, method.lower()), url, headers=headers, data=data_raw )
-			except (requests.exceptions.RequestException, SyncTimeout) as err: pass
-		except (ResponseFailed, RequestNotSent, RequestTransmissionFailed) as err: pass
+			except ( socket.error, SyncTimeout,
+				requests.exceptions.RequestException ) as err: pass
+		except ( RequestTransmissionFailed,
+			RequestNotSent, ResponseFailed ) as err: pass
 
 		if err:
 			if not self.hide_connection_errors:
