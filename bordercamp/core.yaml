@@ -260,8 +260,10 @@ relay_defaults:
       comment: '/h/{msg.data.post.author_detail.name}: re:[{id}] - {msg}' # for /comment
       other: '/h/{msg.data.post.author_detail.name}: [misc] {msg}' # for other events
 
-  pipe_html_unescape:
-    # Replaces html entities with proper chars using twisted.web.microdom.unescape
+  pipe_html_process:
+    # Replaces html entities with proper chars.
+    # Currently just uses twisted.web.microdom.unescape,
+    #  might do more (e.g. strip html) in the future.
     # No parameters.
 
   debug_dumper:
