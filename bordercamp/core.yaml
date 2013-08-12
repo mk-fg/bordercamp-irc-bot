@@ -259,6 +259,13 @@ relay_defaults:
       note: '/h/{msg.data.post.author_detail.name}: {msg} [{id}]' # for /note type
       comment: '/h/{msg.data.post.author_detail.name}: re:[{id}] - {msg}' # for /comment
       other: '/h/{msg.data.post.author_detail.name}: [misc] {msg}' # for other events
+    warn:
+      # Warnings to spot some feed/post anomalies.
+      template: '/h/-: warn:[{id}] detected key: {key}, value: {value}'
+      has_keys:
+        # An optional list of str.format values to issue a line of warning, if spotted in message.
+        # - 'post.content[1]'   # more than one type of content - might need special handling
+        # - 'post.title'   # old name for post.content basically, shouldn't be on new feeds
 
   pipe_html_process:
     # Replaces html entities with proper chars.

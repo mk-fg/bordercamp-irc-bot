@@ -7,7 +7,7 @@ from bordercamp import force_unicode
 from . import BCRelay
 
 import itertools as it, operator as op, functools as ft
-import os, re, hashlib
+import os, re, hashlib, types
 
 
 class AtomOStatusLink(BCRelay):
@@ -15,19 +15,50 @@ class AtomOStatusLink(BCRelay):
 	def __init__(self, *argz, **kwz):
 		super(AtomOStatusLink, self).__init__(*argz, **kwz)
 
+		# Pre-process warning templates
+		if self.conf.warn and self.conf.warn.has_keys:
+			if isinstance(self.conf.warn.has_keys, types.StringTypes):
+				self.conf.warn.has_keys = [self.conf.warn.has_keys]
+			warn_list = list()
+			for tpl in self.conf.warn.has_keys:
+				if not (tpl.startswith('{') and tpl.endswith('}')):
+					tpl = '{{{}}}'.format(tpl)
+				warn_list.append(tpl)
+			self.conf.warn.has_keys = warn_list
+			self.conf.warn.template = force_unicode(self.conf.warn.template)
+		else: self.conf.warn = None
+
 	def dispatch(self, msg):
+		# Generate message id
 		convo_id = 'none?'
 		for link in msg.data.post.links:
 			if link.rel == 'ostatus:conversation':
 				convo_id = hashlib.sha1(link.href)\
 					.digest().encode('base64').replace('/', '-')[:self.conf.id_length]
 				break
+		# Pick template
 		tpl = self.conf.template.other
 		for k, obj_type in [('note', r'/note$'), ('comment', r'/comment$')]:
 			if not re.search(obj_type, msg.data.post['activity_object-type']): continue
 			tpl = self.conf.template[k]
 			break
-		return force_unicode(tpl).format(msg=msg, id=convo_id)
+		# Format
+		res = [force_unicode(tpl).format(msg=msg, id=convo_id)]
+
+		# Add warnings, if necessary
+		if self.conf.warn:
+			msg_data = msg.data._asdict()
+			for tpl in self.conf.warn.has_keys:
+				try: val = tpl.format(**msg_data)
+				except (KeyError, IndexError, AttributeError): continue
+				val = dict(id=convo_id, key=tpl.strip('{}'), value=val)
+				try: val = self.conf.warn.template.format(**val)
+				except (KeyError, IndexError, AttributeError) as err:
+					raise ValueError( 'Failed to format template'
+						' {!r} (data: {}): {}'.format(self.conf.warn.template, val, err) )
+				res.append(val)
+
+		return res
 
 
 relay = AtomOStatusLink

@@ -171,7 +171,7 @@ class FeedSyndication(BCRelay):
 
 			event = self.feeds[url].template
 			try: event = event.format(**post_obj._asdict())
-			except (AttributeError, KeyError) as err:
+			except (KeyError, IndexError, AttributeError) as err:
 				raise ValueError(
 					'Failed to format template {!r} (data: {}): {}'\
 					.format(event, post_obj, err) )
