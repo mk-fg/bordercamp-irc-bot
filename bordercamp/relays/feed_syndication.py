@@ -169,7 +169,13 @@ class FeedSyndication(BCRelay):
 				for attr in self.feeds[url].deduplication )
 			if not self.filter_db.add(url, post_id): continue
 
-			event = RelayedEvent(self.feeds[url].template.format(**post_obj._asdict()))
+			event = self.feeds[url].template
+			try: event = event.format(**post_obj._asdict())
+			except (AttributeError, KeyError) as err:
+				raise ValueError(
+					'Failed to format template {!r} (data: {}): {}'\
+					.format(event, post_obj, err) )
+			event = RelayedEvent(event)
 			event.data = post_obj # for any further tricky filtering
 			reactor.callLater(0, self.interface.dispatch, event, source=self)
 
