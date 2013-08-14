@@ -29,8 +29,8 @@ class HtmlProcess(BCRelay):
 		msg_etree = self.lxml_soup(msg)
 		if self.conf.process_links:
 			for tag in msg_etree.iter(tag='a'):
-				if tag.text and not re.search(r'https?://', tag.text):
-					tag.text = '{} <{}>'.format(tag.text, tag.attrib['href'])
+				if tag.text and not re.search(ur'https?://', tag.text):
+					tag.text = u'{} <{}>'.format(tag.text, tag.attrib['href'])
 				tag.drop_tag()
 		msg_new = msg_etree.text_content()
 		if isinstance(msg, RelayedEvent) and hasattr(msg, 'data'):
