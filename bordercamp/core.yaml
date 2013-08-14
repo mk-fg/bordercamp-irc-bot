@@ -266,6 +266,7 @@ relay_defaults:
         # An optional list of str.format values to issue a line of warning, if spotted in message.
         # - 'post.content[1]'   # more than one type of content - might need special handling
         # - 'post.title'   # old name for post.content basically, shouldn't be on new feeds
+    skip_rts: true # skip "retweets"
 
   pipe_html_process:
     # Replaces html entities with proper chars.

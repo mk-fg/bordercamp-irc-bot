@@ -28,6 +28,8 @@ class AtomOStatusLink(BCRelay):
 			self.conf.warn.template = force_unicode(self.conf.warn.template)
 		else: self.conf.warn = None
 
+	_lookup_error = KeyError, IndexError, AttributeError
+
 	def dispatch(self, msg):
 		# Generate message id
 		convo_id = 'none?'
@@ -37,11 +39,17 @@ class AtomOStatusLink(BCRelay):
 					.digest().encode('base64').replace('/', '-')[:self.conf.id_length]
 				break
 		# Pick template
-		tpl = self.conf.template.other
-		for k, obj_type in [('note', r'/note$'), ('comment', r'/comment$')]:
+		atype, tpl = 'other', self.conf.template.other
+		for atype, obj_type in [('note', r'/note$'), ('comment', r'/comment$')]:
 			if not re.search(obj_type, msg.data.post['activity_object-type']): continue
-			tpl = self.conf.template[k]
+			tpl = self.conf.template[atype]
 			break
+		# Check for RTs
+		if self.conf.skip_rts:
+			try: msg_base = msg.data.post.content[0].value
+			except self._lookup_error: pass
+			else:
+				if atype == 'other' and msg_base.startswith('RT @'): return
 		# Format
 		res = [force_unicode(tpl).format(msg=msg, id=convo_id)]
 
@@ -50,10 +58,10 @@ class AtomOStatusLink(BCRelay):
 			msg_data = msg.data._asdict()
 			for tpl in self.conf.warn.has_keys:
 				try: val = tpl.format(**msg_data)
-				except (KeyError, IndexError, AttributeError): continue
+				except self._lookup_error: continue
 				val = dict(id=convo_id, key=tpl.strip('{}'), value=val)
 				try: val = self.conf.warn.template.format(**val)
-				except (KeyError, IndexError, AttributeError) as err:
+				except self._lookup_error as err:
 					raise ValueError( 'Failed to format template'
 						' {!r} (data: {}): {}'.format(self.conf.warn.template, val, err) )
 				res.append(val)
