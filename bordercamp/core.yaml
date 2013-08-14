@@ -269,10 +269,8 @@ relay_defaults:
     skip_rts: true # skip "retweets"
 
   pipe_html_process:
-    # Replaces html entities with proper chars.
-    # Currently just uses twisted.web.microdom.unescape,
-    #  might do more (e.g. strip html) in the future.
-    # No parameters.
+    # Replaces html entities with proper chars, strip tags, make links inline (optional).
+    process_links: true # replace <a> tags with rst-style "title <href>" (unless title=href) markup
 
   debug_dumper:
     # Relay that dumps recent messages sent to logging module upon request.

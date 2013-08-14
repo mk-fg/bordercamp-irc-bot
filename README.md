@@ -51,6 +51,7 @@ without any installation.
 * [layered-yaml-attrdict-config](https://github.com/mk-fg/layered-yaml-attrdict-config)
 * [Twisted](http://twistedmatrix.com/) (core, words)
 * (optional) [xattr](https://pypi.python.org/pypi/xattr/) for reliable log-position tracking
+* (optional) [lxml](http://lxml.de/) for some features of pipe_html_process relay
 * (optional) More deps for some less-relevant module options (if used), listed in the config.
 
 

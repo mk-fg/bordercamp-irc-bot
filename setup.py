@@ -48,7 +48,9 @@ setup(
 		'Topic :: System :: Systems Administration' ],
 
 	install_requires = ['Twisted', 'PyYAML', 'layered-yaml-attrdict-config', 'setuptools'],
-	extras_require = {'xattr': ['xattr']},
+	extras_require = {
+		'xattr': ['xattr'],
+		'html_process': ['lxml'] },
 
 	packages = find_packages(),
 	include_package_data = True,
