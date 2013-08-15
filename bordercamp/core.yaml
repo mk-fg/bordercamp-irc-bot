@@ -270,7 +270,11 @@ relay_defaults:
 
   pipe_html_process:
     # Replaces html entities with proper chars, strip tags, make links inline (optional).
-    process_links: true # replace <a> tags with rst-style "title <href>" (unless title=href) markup
+    process_links:
+      # Replace <a> tags with rst-style "title <href>" (unless title=href) markup.
+      enabled: true
+      detect_hashtags: true # detect hashtags by <span class="tag"> wrapper (e.g. status.net sites)
+      detect_inlined_urls: true # detect (and don't add <href>) links where text is the same as href
 
   debug_dumper:
     # Relay that dumps recent messages sent to logging module upon request.

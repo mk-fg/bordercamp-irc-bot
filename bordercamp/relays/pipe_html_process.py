@@ -27,10 +27,18 @@ class HtmlProcess(BCRelay):
 
 	def dispatch(self, msg):
 		msg_etree = self.lxml_soup(msg)
-		if self.conf.process_links:
+		if not self.conf.process_links or self.conf.process_links.enabled:
 			for tag in msg_etree.iter(tag='a'):
-				if tag.text and not re.search(ur'https?://', tag.text):
-					tag.text = u'{} <{}>'.format(tag.text, tag.attrib['href'])
+				try:
+					assert tag.text
+					if self.conf.process_links.detect_hashtags:
+						parent = tag.getparent()
+						assert not parent.tag == 'span' and parent.get('class') == 'tag'
+					if self.conf.process_links.detect_inlined_urls:
+						link = tag.get('href')
+						assert not op.eq(*it.imap(ft.partial(re.sub, ur'^https?://', ''), [link, tag.text]))
+				except AssertionError: pass
+				else: tag.text = u'{} <{}>'.format(tag.text, tag.attrib['href'])
 				tag.drop_tag()
 		msg_new = msg_etree.text_content()
 		if isinstance(msg, RelayedEvent) and hasattr(msg, 'data'):
