@@ -39,6 +39,9 @@ class Shortener(BCRelay):
 		defer.returnValue(re.sub(r'^(?i)(https?|spdy)://', '', url))
 
 
+	def shorten_clean(self, url, params):
+		return url
+
 	def shorten_cut(self, url, params):
 		return url[:(params or 50)]
 

@@ -158,9 +158,10 @@ relay_defaults:
     length_min: 40 # don't obfuscate stuff that isn't that long to begin with
     api: # defines shortener service or method to use
       # Supported shorteners:
-      #  cut - just cuts the url to a given size - int parameter (default: 50)
+      #  clean - remove http(s):// prefix from urls
+      #  cut - cuts the url to a given size - int parameter (default: 50)
       #  m29 - http://m29.us/ - no parameters, needs pycrypto module
-      type: cut
+      type: clean
       parameters:
 
   pipe_filter:
