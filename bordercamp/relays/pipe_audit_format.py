@@ -3,6 +3,7 @@ from __future__ import print_function
 
 from twisted.python import log
 
+from bordercamp.routing import RelayedEvent
 from bordercamp import force_unicode
 from . import BCRelay
 
@@ -34,10 +35,10 @@ class AuditLog(BCRelay):
 		super(AuditLog, self).__init__(*argz, **kwz)
 		self._ev_cache = dict()
 
-	def get_msg_val(self, msg, k, val=ur'\d+'):
+	def get_msg_val(self, msg, k, val=ur'(?P<val>\d+)'):
 		match = re.search(ur'\b{}=({})(\s+|$)'.format(re.escape(k), val), msg)
 		if not match: raise KeyError(msg, k)
-		return match.group(1)
+		return match.group('val')
 
 	def dispatch(self, msg):
 		if not msg.strip(): return
@@ -64,18 +65,20 @@ class AuditLog(BCRelay):
 		if self.conf.events.watches.enabled:
 			# Extract all necessary attributes
 			ev_vals = dict(node=ev['node'], ev_id=ev['ev_id'])
-			syscall, = ev['SYSCALL']
+			try: syscall, = ev['SYSCALL']
+			except ValueError:
+				raise ValueError('Failed to dissect watch-event: {!r}'.format(ev))
 			for k in it.imap(''.join, it.product(['', 'e', 's', 'fs'], ['uid', 'gid'])):
 				ev_vals[k] = self.get_msg_val(syscall, k)
 			for k in 'key', 'comm', 'exe':
-				ev_vals[k] = self.get_msg_val(syscall, k, ur'"[^"]+"')
-			ev_vals['tty'] = self.get_msg_val(syscall, 'tty', '\S+')
+				ev_vals[k] = self.get_msg_val(syscall, k, ur'"(?P<val>[^"]+)"')
+			ev_vals['tty'] = self.get_msg_val(syscall, 'tty', '(?P<val>\S+)')
 			paths = ev_vals['paths'] = list()
 			for msg in ev['PATH']:
-				path = self.get_msg_val(msg, 'name', ur'("[^"]+"|\(null\))')
+				path = self.get_msg_val(msg, 'name', ur'(?P<val>"[^"]+"|\(null\))')
 				paths.append(dict( path=path,
 					inode=self.get_msg_val(msg, 'inode'),
-					dev=self.get_msg_val(msg, 'dev', '[a-f\d]{2}:[a-f\d]{2}') ))
+					dev=self.get_msg_val(msg, 'dev', '(?P<val>[a-f\d]{2}:[a-f\d]{2})') ))
 
 			# Formatting
 			err, tpl = None, force_unicode(self.conf.events.watches.template_path)
@@ -86,8 +89,11 @@ class AuditLog(BCRelay):
 			if not err:
 				ev_vals['paths'] = ', '.join(ev_vals['paths'])
 				tpl, val = force_unicode(self.conf.events.watches.template), ev_vals
-				try: return tpl.format(**val)
+				try: event = tpl.format(**val)
 				except self._lookup_error as err: pass
+				event = RelayedEvent(event)
+				event.data = ev_vals
+				return event
 			raise ValueError( 'Failed to format template {!r} (data: {}): {}'.format(tpl, val, err))
 
 
