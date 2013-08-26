@@ -9,7 +9,7 @@ from . import BCRelay
 
 import itertools as it, operator as op, functools as ft
 from collections import defaultdict
-import os, re, time
+import os, re, time, types
 
 
 class AuditLog(BCRelay):
@@ -34,6 +34,9 @@ class AuditLog(BCRelay):
 	def __init__(self, *argz, **kwz):
 		super(AuditLog, self).__init__(*argz, **kwz)
 		self._ev_cache = dict()
+		for v in self.conf.events.viewvalues():
+			if not v.ev_keys: v.ev_keys = list()
+			elif isinstance(v.ev_keys, types.StringTypes): v.ev_keys = [v.ev_keys]
 
 	def get_msg_val(self, msg, k, val=ur'(?P<val>\d+)'):
 		match = re.search(ur'\b{}=({})(\s+|$)'.format(re.escape(k), val), msg)
@@ -43,6 +46,7 @@ class AuditLog(BCRelay):
 	def dispatch(self, msg):
 		if not msg.strip(): return
 
+		## Event lines are cached until EOE msg is encountered
 		match = self._re_base.search(msg)
 		if not match:
 			log.warn('Failed to match audit event spec: {!r}'.format(msg))
@@ -62,15 +66,26 @@ class AuditLog(BCRelay):
 			return
 		del self._ev_cache[ev_key]
 
-		if self.conf.events.watches.enabled:
+		## Get "key" value for event, if present
+		ev_key = None
+		try: syscall, = ev['SYSCALL'] # currently handled events always have it
+		except ValueError: pass
+		else:
+			try: ev_key = self.get_msg_val(syscall, 'key', ur'"(?P<val>[^"]+)"')
+			except KeyError as err:
+				log.noise('Failed to get ev_key from syscall: {}'.format(err))
+		if not ev_key:
+			log.noise('Unhandled event: {!r}'.format(ev))
+			return
+
+		## Processing
+
+		if ev_key in self.conf.events.watches.ev_keys:
 			# Extract all necessary attributes
-			ev_vals = dict(node=ev['node'], ev_id=ev['ev_id'])
-			try: syscall, = ev['SYSCALL']
-			except ValueError:
-				raise ValueError('Failed to dissect watch-event: {!r}'.format(ev))
+			ev_vals = dict(node=ev['node'], ev_id=ev['ev_id'], key=ev_key)
 			for k in it.imap(''.join, it.product(['', 'e', 's', 'fs'], ['uid', 'gid'])):
 				ev_vals[k] = self.get_msg_val(syscall, k)
-			for k in 'key', 'comm', 'exe':
+			for k in 'comm', 'exe':
 				ev_vals[k] = self.get_msg_val(syscall, k, ur'"(?P<val>[^"]+)"')
 			ev_vals['tty'] = self.get_msg_val(syscall, 'tty', '(?P<val>\S+)')
 			paths = ev_vals['paths'] = list()

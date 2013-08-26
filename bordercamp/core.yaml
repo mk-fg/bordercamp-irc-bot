@@ -255,10 +255,16 @@ relay_defaults:
 
   pipe_audit_format:
     # Process audispd syslog plugin generated entries.
-    events: # which events are enabled/supported
+    events:
+      # Which events are enabled/supported.
+      # Enabled events *must* have "ev_keys" property set to audit
+      #  key(s) that are emitted with events for that particular handler
+      #  (i.e. "watches" handler will barf on seeing different event with its key).
       watches: # -w events processing (fs watches)
-        enabled: true
-        # Templates for message and individual "path" in it
+        # Audit-key or list of keys that identify events to process/report.
+        # Can be left empty or set to empty value to disable handler.
+        ev_keys: # example: fs-change-root
+        # Templates for message and individual "path" in it.
         template: >-
           Audit alert (node: {node}) - {key}: {comm} ({exe},
           {uid}/{euid}/{suid}/{fsuid}:{gid}/{egid}/{sgid}/{fsgid}, {tty}), {paths}
