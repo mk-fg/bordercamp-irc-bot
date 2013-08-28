@@ -15,7 +15,7 @@ import os, re, time, types
 class AuditLog(BCRelay):
 
 	_re_base = re.compile(
-		ur'\bnode=(?P<node>\S+)\s+type=(?P<type>[A-Z]+)'
+		ur'\bnode=(?P<node>\S+)\s+type=(?P<type>\S+)'
 		ur'\s+msg=audit\((?P<ev_id>[\d.:]+)\):\s*(?P<msg>.*)$' )
 
 	_lookup_error = KeyError, IndexError, AttributeError
@@ -38,9 +38,12 @@ class AuditLog(BCRelay):
 			if not v.ev_keys: v.ev_keys = list()
 			elif isinstance(v.ev_keys, types.StringTypes): v.ev_keys = [v.ev_keys]
 
-	def get_msg_val(self, msg, k, val=ur'(?P<val>\d+)'):
+	_no_fallback = object()
+	def get_msg_val(self, msg, k, val=ur'(?P<val>\d+)', fallback=_no_fallback):
 		match = re.search(ur'\b{}=({})(\s+|$)'.format(re.escape(k), val), msg)
-		if not match: raise KeyError(msg, k)
+		if not match:
+			if fallback is self._no_fallback: raise KeyError(msg, k)
+			else: return fallback
 		return match.group('val')
 
 	def dispatch(self, msg):
@@ -92,8 +95,8 @@ class AuditLog(BCRelay):
 			for msg in ev['PATH']:
 				path = self.get_msg_val(msg, 'name', ur'(?P<val>"[^"]+"|\(null\))')
 				paths.append(dict( path=path,
-					inode=self.get_msg_val(msg, 'inode'),
-					dev=self.get_msg_val(msg, 'dev', '(?P<val>[a-f\d]{2}:[a-f\d]{2})') ))
+					inode=self.get_msg_val(msg, 'inode', fallback='nil'),
+					dev=self.get_msg_val(msg, 'dev', '(?P<val>[a-f\d]{2}:[a-f\d]{2})', fallback='nil') ))
 
 			# Formatting
 			err, tpl = None, force_unicode(self.conf.events.watches.template_path)
