@@ -271,6 +271,8 @@ relay_defaults:
         template_path: '{path} ({inode}:{dev})'
     processing:
       # What to do with events that didn't have EOE message.
+      # These seem to be fairly common when a lot of events get triggered at the same time.
+      # Any kind of lines can be missing there, so fairly pointless to process these.
       timeout: 600 # how long to wait for EOE with same audit-id
       warn: false # issue log warning about every such event
 
