@@ -20,8 +20,6 @@ class AuditLog(BCRelay):
 
 	_lookup_error = KeyError, IndexError, AttributeError
 
-	_ev_cache = None
-	_ev_cache_timeout = 3600
 	def _ev_cache_gc(self):
 		if ord(os.urandom(1)) < 10: # 4% chance
 			ts_min = time.time() - self._ev_cache_timeout
@@ -29,11 +27,13 @@ class AuditLog(BCRelay):
 				ts_ev = ev.get('ts')
 				if ts_ev is not None and ts_ev < ts_min:
 					ev = self._ev_cache.pop(k)
-					log.warn('Unprocessed audit event in cache: {!r}'.format(ev))
+					(log.warn if self.conf.processing.warn else log.noise)\
+						('Unprocessed audit event in cache: {!r}'.format(ev))
 
 	def __init__(self, *argz, **kwz):
 		super(AuditLog, self).__init__(*argz, **kwz)
 		self._ev_cache = dict()
+		self._ev_cache_timeout = self.conf.processing.timeout
 		for v in self.conf.events.viewvalues():
 			if not v.ev_keys: v.ev_keys = list()
 			elif isinstance(v.ev_keys, types.StringTypes): v.ev_keys = [v.ev_keys]

@@ -269,6 +269,10 @@ relay_defaults:
           Audit alert (node: {node}) - {key}: {comm} ({exe},
           {uid}/{euid}/{suid}/{fsuid}:{gid}/{egid}/{sgid}/{fsgid}, {tty}), {paths}
         template_path: '{path} ({inode}:{dev})'
+    processing:
+      # What to do with events that didn't have EOE message.
+      timeout: 600 # how long to wait for EOE with same audit-id
+      warn: false # issue log warning about every such event
 
   pipe_feed_ostatus_link:
     # Link conversations in status.net (ostatus) feed by appending convo-ids to messages.
