@@ -103,6 +103,7 @@ relay_defaults:
         #   'myfeed: {post.title} ({post.published_parsed})'
         #   '{post.title}:\n{post.summary_detail.value}'
         #   'reddit <{post.url}>: {post.title} ({post.domain})'
+        # Can also be a list to fallback to other formats (in order) if previous one(s) fail.
         template: '{post.title}'
         deduplication:
           # List of parameters to hash for an unique feed/post-id

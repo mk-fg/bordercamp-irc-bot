@@ -7,7 +7,7 @@ from twisted.python import log
 
 from bordercamp.routing import RelayedEvent
 from bordercamp.http import HTTPClient, HTTPClientError
-from bordercamp import force_bytes
+from bordercamp import force_bytes, force_unicode
 from . import BCRelay
 
 import itertools as it, operator as op, functools as ft
@@ -111,7 +111,9 @@ class FeedSyndication(BCRelay):
 		base = self.conf.feeds.pop('_default')
 		for url, opts in self.conf.feeds.viewitems():
 			opts.rebase(base)
-			opts.template = opts.template.decode('utf-8')
+			if isinstance(opts.template, types.StringTypes):
+				opts.template = [opts.template]
+			opts.template = map(force_unicode, opts.template)
 			assert opts.type in ['feed', 'reddit-json'],\
 				'Feed type must be either "feed" or "reddit-json", not {!r}'.format(self.feeds[url].type)
 			self.feeds[url] = opts
@@ -169,15 +171,20 @@ class FeedSyndication(BCRelay):
 				for attr in self.feeds[url].deduplication )
 			if not self.filter_db.add(url, post_id): continue
 
-			event = self.feeds[url].template
-			try: event = event.format(**post_obj._asdict())
-			except (KeyError, IndexError, AttributeError) as err:
-				raise ValueError(
-					'Failed to format template {!r} (data: {}): {}'\
-					.format(event, post_obj, err) )
-			event = RelayedEvent(event)
-			event.data = post_obj # for any further tricky filtering
-			reactor.callLater(0, self.interface.dispatch, event, source=self)
+			first_err = None
+			for template in self.feeds[url].template:
+				try: event = template.format(**post_obj._asdict())
+				except (KeyError, IndexError, AttributeError) as err:
+					if not first_err:
+						first_err = ValueError(
+							'Failed to format template {!r} (data: {}): {}'\
+							.format(template, post_obj, err) )
+					continue
+				event = RelayedEvent(event)
+				event.data = post_obj # for any further tricky filtering
+				reactor.callLater(0, self.interface.dispatch, event, source=self)
+				break
+			else: raise first_err # all templates failed
 
 			count += 1
 			if self.feeds[url].process_max and count >= self.feeds[url].process_max: break
