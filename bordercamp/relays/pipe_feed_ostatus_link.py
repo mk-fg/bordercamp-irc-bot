@@ -40,12 +40,15 @@ class AtomOStatusLink(BCRelay):
 				break
 		# Pick template
 		atype, tpl = 'other', self.conf.template.other
+		msg_obj_type = msg.data.post['activity_object-type']
+		if self.conf.skip.poll_response\
+			and re.search(r'/poll-response$', msg_obj_type): return
 		for k, obj_type in [('note', r'/note$'), ('comment', r'/comment$')]:
-			if not re.search(obj_type, msg.data.post['activity_object-type']): continue
+			if not re.search(obj_type, msg_obj_type): continue
 			atype, tpl = k, self.conf.template[k]
 			break
 		# Check for RTs
-		if self.conf.skip_rts:
+		if self.conf.skip.rts:
 			try: msg_base = msg.data.post.content[0].value
 			except self._lookup_error: pass
 			else:
