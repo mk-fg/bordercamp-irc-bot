@@ -93,7 +93,7 @@ class AuditLog(BCRelay):
 			ev_vals['tty'] = self.get_msg_val(syscall, 'tty', '(?P<val>\S+)')
 			paths = ev_vals['paths'] = list()
 			for msg in ev['PATH']:
-				path = self.get_msg_val(msg, 'name', ur'(?P<val>"[^"]+"|\(null\))')
+				path = self.get_msg_val(msg, 'name', ur'(?P<val>"[^"]+"|\(null\)|[0-9A-F]+)')
 				paths.append(dict( path=path,
 					inode=self.get_msg_val(msg, 'inode', fallback='nil'),
 					dev=self.get_msg_val(msg, 'dev', '(?P<val>[a-f\d]{2}:[a-f\d]{2})', fallback='nil') ))
