@@ -1,19 +1,21 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
 
+from twisted.python.filepath import FilePath
+from twisted.internet import inotify, reactor, defer
+from twisted.python import log
+
+from xattr import xattr
+from lya import AttrDict
+
+from bordercamp.routing import RelayedEvent
+from . import BCRelay
+
 import itertools as it, operator as op, functools as ft
 from glob import glob
 from fnmatch import fnmatch
 from hashlib import sha1
 import os, sys, re, pickle, types
-
-from xattr import xattr
-
-from twisted.python.filepath import FilePath
-from twisted.internet import inotify, reactor, defer
-from twisted.python import log
-
-from . import BCRelay
 
 
 
@@ -206,14 +208,16 @@ class Logtail(BCRelay):
 			line = buff.strip()
 			if self.conf.prepend_filename:
 				line = '{}: {}'.format(path.basename(), line)
-			self.handle_line(line)
+			self.handle_line(line, path)
 			return ''
 		else:
 			return buff
 
-	def handle_line(self, line):
+	def handle_line(self, line, path):
 		log.noise('New line: {!r}'.format(line))
-		reactor.callLater(0, self.interface.dispatch, line, source=self)
+		event = RelayedEvent(line)
+		event.data = AttrDict(path=path.path)
+		reactor.callLater(0, self.interface.dispatch, event, source=self)
 
 
 relay = Logtail
