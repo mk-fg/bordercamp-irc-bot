@@ -9,6 +9,7 @@ from xattr import xattr
 from lya import AttrDict
 
 from bordercamp.routing import RelayedEvent
+from bordercamp import force_unicode
 from . import BCRelay
 
 import itertools as it, operator as op, functools as ft
@@ -215,7 +216,7 @@ class Logtail(BCRelay):
 
 	def handle_line(self, line, path):
 		log.noise('New line: {!r}'.format(line))
-		event = RelayedEvent(line)
+		event = RelayedEvent(force_unicode(line))
 		event.data = AttrDict(path=path.path)
 		reactor.callLater(0, self.interface.dispatch, event, source=self)
 
