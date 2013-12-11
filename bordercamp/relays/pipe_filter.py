@@ -34,7 +34,9 @@ class FilterPipe(BCRelay):
 	def dispatch(self, msg):
 		for name, (check, action, optz, attr) in self.rules.viewitems():
 			try: msg_match = msg if not attr else (('{'+attr+'}').format(data=msg.data) or '')
-			except: msg_match = ''
+			except Exception as err:
+				log.noise('Filtering attr-get error ({}) for message: {!r}'.format(err, msg))
+				msg_match = ''
 
 			if not ( check.search(msg_match)
 					if check is not None else bool(msg_match) ):
