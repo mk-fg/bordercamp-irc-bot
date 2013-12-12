@@ -9,6 +9,7 @@ from twisted.internet import reactor, protocol, defer
 from twisted.web.client import getPage
 from twisted.python import log
 
+from bordercamp import force_bytes
 from . import BCRelay
 
 
@@ -32,7 +33,7 @@ class PkgMon(BCRelay):
 	def name_from_patch_link( self, link,
 			_re_path=re.compile(r'\bpackages/[\w\-]+/(?P<name>[\w\-]+)/') ):
 		names = set()
-		try: page = yield getPage(link, timeout=120)
+		try: page = yield getPage(force_bytes(link), timeout=120)
 		except Exception as err:
 			log.warn('Failed to download patch: {}'.format(err))
 			defer.returnValue(None)
