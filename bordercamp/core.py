@@ -105,6 +105,9 @@ def main():
 	import logging
 	logging.NOISE = logging.DEBUG - 1
 	logging.addLevelName(logging.NOISE, 'NOISE')
+	try: from twisted.python.logger._stdlib import fromStdlibLogLevelMapping
+	except ImportError: pass # newer twisted versions only
+	else: fromStdlibLogLevelMapping[logging.NOISE] = logging.NOISE
 	if optz.noise: lvl = logging.NOISE
 	elif optz.debug: lvl = logging.DEBUG
 	else: lvl = logging.WARNING
@@ -196,7 +199,7 @@ def main():
 					if not obj: raise AssertionError('Empty object')
 				except Exception as err:
 					if optz.fatal_errors: raise
-					log.error('Failed to load/init relay {}: {}'.format(ep.name, err))
+					log.error('Failed to load/init relay {}: {} {}'.format(ep.name, type(err), err))
 					obj, subconf.enabled = None, False
 			if obj and subconf.get('enabled', True): relays_obj[name] = obj
 			else:
