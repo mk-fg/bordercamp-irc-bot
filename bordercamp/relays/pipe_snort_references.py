@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
 
+from twisted.python import log
+
+from bordercamp import force_bytes, force_unicode
+from . import BCRelay
+
 import itertools as it, operator as op, functools as ft
 from contextlib import closing
 from time import time
 import os, re, anydbm
-
-from twisted.python import log
-
-from . import BCRelay
 
 
 class SnortRefs(BCRelay):
@@ -92,9 +93,10 @@ class SnortRefs(BCRelay):
 				self.update_sid_db()
 			self.sid_db = anydbm.open(self.conf.paths.sid_db)
 
-		try: msg += '\n  refs: {}'.format(self.sid_db[sid])
+		try: ref = force_unicode(self.sid_db[force_bytes(sid)])
 		except KeyError:
 			log.info('Failed to find refs for sid: {!r} (msg: {!r})'.format(sid, msg))
+		else: msg += u'\n  refs: {}'.format(ref)
 		return msg
 
 

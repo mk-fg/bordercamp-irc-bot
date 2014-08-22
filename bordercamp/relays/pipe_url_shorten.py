@@ -5,7 +5,7 @@ from twisted.internet import defer
 from twisted.python import log
 
 from bordercamp.http import HTTPClient
-from bordercamp import force_bytes
+from bordercamp import force_bytes, force_unicode
 from . import BCRelay
 
 import itertools as it, operator as op, functools as ft
@@ -24,8 +24,9 @@ class Shortener(BCRelay):
 	def dispatch(self, msg):
 		match = self.regex.search(msg)
 		if not match: defer.returnValue(msg)
-		defer.returnValue(( msg[:match.start('url')]\
-			+ (yield self.shorten(match.group('url'))) + msg[match.end('url'):] ))
+		msg = u''.join(map(force_unicode, [ msg[:match.start('url')],
+			(yield self.shorten(match.group('url'))), msg[match.end('url'):] ]))
+		defer.returnValue(msg)
 
 
 	@defer.inlineCallbacks
@@ -36,7 +37,7 @@ class Shortener(BCRelay):
 			except AttributeError:
 				raise ValueError('URL shortener "{}" is not supported')
 			url = yield defer.maybeDeferred(func, url, self.conf.api.parameters)
-		defer.returnValue(re.sub(r'^(?i)(https?|spdy)://', '', url))
+		defer.returnValue(force_unicode(re.sub(r'^(?i)(https?|spdy)://', '', url)))
 
 
 	def shorten_clean(self, url, params):
