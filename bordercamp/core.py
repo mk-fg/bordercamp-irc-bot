@@ -90,6 +90,8 @@ def main():
 			' init errors, bailing out with traceback instead.')
 	parser.add_argument('--debug',
 		action='store_true', help='Verbose operation mode.')
+	parser.add_argument('--debug-memleaks', action='store_true',
+		help='Import guppy and enable its manhole to debug memleaks (requires guppy module).')
 	parser.add_argument('--noise',
 		action='store_true', help='Even more verbose mode than --debug.')
 	optz = parser.parse_args()
@@ -119,6 +121,12 @@ def main():
 		assert not hasattr(log, lvl)
 		setattr(log, func, ft.partial( log.msg,
 			logLevel=logging.getLevelName(lvl.upper()) ))
+
+	# Manholes
+	if optz.debug_memleaks:
+		import guppy
+		from guppy.heapy import Remote
+		Remote.on()
 
 	## Fake "xattr" module, if requested
 	if cfg.core.xattr_emulation:
