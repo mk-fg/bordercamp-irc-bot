@@ -1,4 +1,4 @@
-__version__ = '14.08.2'
+__version__ = '17.2.0'
 
 
 def force_bytes(bytes_or_unicode, encoding='utf-8', errors='backslashreplace'):
