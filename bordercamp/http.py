@@ -84,8 +84,8 @@ class TLSContextFactory(ssl.CertificateOptions):
 
 class QuietHTTP11ClientFactory(protocol.Factory):
 	noisy = False
-	def __init__(self, quiescentCallback):
-		self._quiescentCallback = quiescentCallback
+	def __init__(self, quiescentCallback, metadata):
+		self._quiescentCallback, self._metadata = quiescentCallback, metadata
 	def buildProtocol(self, addr):
 		return HTTP11ClientProtocol(self._quiescentCallback)
 
