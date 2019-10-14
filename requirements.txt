@@ -1,6 +1,0 @@
-PyYAML==3.09
-Twisted==12.0.0
-distribute==0.6.24
-layered-yaml-attrdict-config==12.05.3
-xattr==0.6.2
-zope.interface==3.6.1
